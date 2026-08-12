@@ -38,8 +38,13 @@ function ticket(id: string, over: Partial<Ticket['fields']> = {}, rest: Partial<
   }
 }
 
+/** A served, writable board — the only kind there is. */
 function html(tickets: Ticket[], me: string | null = null): string {
-  return renderBoardHtml(buildBoard(tickets, { me, generated: AT }), { project: 'PROJ' })
+  return renderBoardHtml(buildBoard(tickets, { me, generated: AT }), {
+    project: 'PROJ',
+    nonce: 'a-nonce',
+    apply: true,
+  })
 }
 
 describe('rendering', () => {
@@ -138,19 +143,8 @@ describe('links and drag state', () => {
     )
   })
 
-  it('TC-I-BOARD-16 marks a file board as unable to move anything', () => {
+  it('TC-I-BOARD-17 marks an applying board as draggable', () => {
     const out = html([linked])
-
-    expect(out).toContain('data-live="0"')
-    expect(out).toContain('data-nonce=""')
-    expect(out).toContain('mgmt board --serve --apply')
-  })
-
-  it('TC-I-BOARD-17 marks a served applying board as draggable', () => {
-    const out = renderBoardHtml(buildBoard([linked], { me: null, generated: AT }), {
-      project: 'PROJ',
-      live: { nonce: 'a-nonce', apply: true },
-    })
 
     expect(out).toContain('data-live="1"')
     expect(out).toContain('data-nonce="a-nonce"')
@@ -159,10 +153,11 @@ describe('links and drag state', () => {
     expect(out).toContain('data-status="To Do"')
   })
 
-  it('TC-I-BOARD-18 leaves a served board read-only without --apply', () => {
+  it('TC-I-BOARD-18 leaves a board read-only without --apply', () => {
     const out = renderBoardHtml(buildBoard([linked], { me: null, generated: AT }), {
       project: 'PROJ',
-      live: { nonce: 'a-nonce', apply: false },
+      nonce: 'a-nonce',
+      apply: false,
     })
 
     expect(out).toContain('data-live="0"')

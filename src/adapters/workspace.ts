@@ -15,7 +15,7 @@ export const WORKSPACE_FILE = 'config.yml'
 
 /** Data format version this build reads and writes. */
 export const SCHEMA_VERSION = 1
-export const CLI_VERSION = '0.2.2'
+export const CLI_VERSION = '0.2.3'
 
 const ConfigSchema = z.object({
   mgmt: z.object({

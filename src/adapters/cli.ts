@@ -65,6 +65,12 @@ export interface Io {
   err(line: string): void
   cwd: string
   env: Record<string, string | undefined>
+  /**
+   * Waits while the board is served, resolving when it should stop. Absent in a
+   * terminal, where waiting for SIGINT is the right behaviour; supplied by a
+   * test that wants to drive the running server and then shut it down.
+   */
+  hold?: (url: string) => Promise<void>
 }
 
 export const nodeIo: Io = {
@@ -186,19 +192,15 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
 
   program
     .command('board')
-    .description('generate a Kanban board of project tasks and your own')
-    .option('--out <file>', 'where to write it, relative to the workspace root', 'board.html')
+    .description('serve a Kanban board of project tasks and your own on loopback')
     .option('--columns <list>', 'comma-separated status order, e.g. "To Do,In Progress,Done"')
     .option('--me <user>', 'whose board "My tasks" is; overrides the cached identity')
-    .option('--serve', 'serve the board on loopback so cards can be dragged')
-    .option('--port <n>', 'port for --serve; 0 picks a free one', Number)
-    .option('--apply', 'with --serve, let a drag move a ticket in the tracker')
+    .option('--port <n>', 'port to listen on; 0 picks a free one', Number)
+    .option('--apply', 'let a drag move a ticket in the tracker')
     .action(
       async (opts: {
-        out: string
         columns?: string
         me?: string
-        serve?: boolean
         port?: number
         apply?: boolean
       }) => {
@@ -693,7 +695,7 @@ async function cmdIndex(io: Io, ws: Workspace): Promise<number> {
 async function cmdBoard(
   io: Io,
   ws: Workspace,
-  opts: { out: string; columns?: string; me?: string; serve?: boolean; port?: number; apply?: boolean },
+  opts: { columns?: string; me?: string; port?: number; apply?: boolean },
   json: boolean,
 ): Promise<number> {
   const store = new MarkdownTicketRepo(ws.root)
@@ -739,41 +741,33 @@ async function cmdBoard(
     })
   }
 
+  // Built once here so the terminal can report what is on the board, and so a
+  // malformed file is named before the browser opens rather than never.
   const board = await currentBoard()
+  for (const id of unreadable) io.err(`skipped ${id}: unreadable`)
 
   if (json) {
     io.out(JSON.stringify(board, null, 2))
     return EXIT.ok
   }
 
-  if (opts.serve) return serveBoard(io, ws, store, tracker, currentBoard, opts)
+  io.out(
+    `${board.project.total} ticket${board.project.total === 1 ? '' : 's'} in ${board.columns.length} column${board.columns.length === 1 ? '' : 's'}` +
+      (identity
+        ? `, ${board.mine.total} assigned to ${identity.name}`
+        : ' — could not tell who you are, so "My tasks" is empty. Set MGMT_ME in .env, or pass --me.'),
+  )
 
-  const { mkdir, writeFile } = await import('node:fs/promises')
-  const { dirname, join, isAbsolute } = await import('node:path')
-  const out = isAbsolute(opts.out) ? opts.out : join(ws.root, opts.out)
-  // `--out docs/board.html` should not fail because `docs/` does not exist yet.
-  await mkdir(dirname(out), { recursive: true })
-  await writeFile(out, renderBoardHtml(board, { project: ws.config.jira.project }), 'utf8')
-
-  io.out(`${opts.out} — ${board.project.total} ticket${board.project.total === 1 ? '' : 's'} in ${board.columns.length} column${board.columns.length === 1 ? '' : 's'}`)
-
-  if (identity) io.out(`My tasks: ${board.mine.total} assigned to ${identity.name}`)
-  else
-    io.out(
-      'My tasks: empty — could not tell who you are. Set MGMT_ME in .env, or pass --me.',
-    )
-
-  for (const id of unreadable) io.err(`skipped ${id}: unreadable`)
-
-  return EXIT.ok
+  return serveBoard(io, ws, store, tracker, currentBoard, opts)
 }
 
 /**
  * Serves the board until interrupted.
  *
- * A drag has to reach Jira, and only this process holds the token — a board
- * opened as a file has no way to move anything, and giving it one would mean
- * writing a token into the workspace.
+ * There is no file to open instead. A drag has to reach Jira, and only this
+ * process holds the token: a page on disk could not move anything, and giving
+ * it the means would put a token in the workspace. One mode, so what you see is
+ * always something that can act.
  */
 async function serveBoard(
   io: Io,
@@ -802,7 +796,8 @@ async function serveBoard(
     render: async () =>
       renderBoardHtml(await currentBoard(), {
         project: ws.config.jira.project,
-        live: { nonce, apply: !!opts.apply },
+        nonce,
+        apply: !!opts.apply,
       }),
     move: (id, to) => moveTicket(deps, id, to, { apply: true }),
   })
@@ -815,14 +810,17 @@ async function serveBoard(
   )
   io.out('Ctrl-C to stop.')
 
-  await new Promise<void>((resolve) => {
-    const stop = () => {
-      io.out('')
-      resolve()
-    }
-    process.once('SIGINT', stop)
-    process.once('SIGTERM', stop)
-  })
+  // `hold` is the seam a test uses to drive the running server and then let it
+  // stop; in a terminal it waits for the interrupt that a person types.
+  await (io.hold?.(server.url) ??
+    new Promise<void>((resolve) => {
+      const stop = () => {
+        io.out('')
+        resolve()
+      }
+      process.once('SIGINT', stop)
+      process.once('SIGTERM', stop)
+    }))
 
   await server.close()
   return EXIT.ok

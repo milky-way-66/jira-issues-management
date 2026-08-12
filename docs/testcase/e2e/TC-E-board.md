@@ -3,24 +3,32 @@
 Target: the `board` command · Layer: e2e · Dependencies: a scaffolded workspace;
 the substitute tracker where identity is involved.
 
-**TC-E-BOARD-01** — the command writes `board.html` and exits 0
+**TC-E-BOARD-01** — the command serves the board on loopback
 **Given** a workspace with tickets
 **When** `mgmt board` runs
-**Then** `board.html` exists at the workspace root and the exit code is 0.
+**Then** it prints a `127.0.0.1` URL that answers 200, and exits 0 when stopped.
 
-*No `--apply`: the board is a view of the workspace and touches no ticket data,
-so there is nothing a dry run would protect. Same rule as `mgmt index`.*
+*There is no file to open instead. A drag has to reach Jira and only this process
+holds the token, so a page on disk could never act; one mode means what you see is
+always something that can.*
 
 **TC-E-BOARD-02** — every ticket in the working set appears
-**Then** each ticket key is present in the file, under its own status.
+**Then** each ticket key is served, under its own status.
 
-**TC-E-BOARD-03** — `--out` writes elsewhere
-**When** `mgmt board --out docs/board.html` runs
-**Then** the file is written there and the default path is left alone.
+**TC-E-BOARD-03** — `--port` decides where it listens
+**When** `mgmt board --port 8931` runs
+**Then** the board is served on exactly that port.
 
-**TC-E-BOARD-04** — `--json` emits the model and writes no file
-**Then** stdout parses as a board with `project`, `mine` and `columns`
-**And** `board.html` was not created.
+**TC-E-BOARD-03b** — an edit made while it runs shows on the next load
+**Given** a ticket written after the server started
+**Then** reloading shows it, without restarting anything.
+
+*Rationale: the board is a view of the files, and a stale view of files that are
+being edited is the thing a generated snapshot got wrong.*
+
+**TC-E-BOARD-04** — `--json` emits the model and serves nothing
+**Then** stdout parses as a board with `project`, `mine` and `columns`, and the
+command returns on its own rather than waiting to be stopped.
 
 **TC-E-BOARD-05** — `--me` decides whose board the personal one is
 **When** `mgmt board --me bob` runs
@@ -42,11 +50,13 @@ one view, not the command.*
 **When** `mgmt board --columns "Done,In Progress,To Do"` runs
 **Then** the columns appear in that order.
 
-**TC-E-BOARD-09** — a scaffolded workspace ignores the generated board
-**Then** `.gitignore` covers `board.html` and `.sync/identity.json`.
+**TC-E-BOARD-09** — serving writes nothing into the workspace
+**Then** the directory holds exactly what it held before
+**And** `.gitignore` still covers `.sync/identity.json`, the one file a board may
+add.
 
-*Rationale: the board is regenerated from the tickets, so committing it adds a
-diff to every sync; the identity file names one person and must not be shared.*
+*Rationale: a board that leaves nothing behind cannot leave anything stale, and
+the identity file names one person, so it must not be shared.*
 
 **TC-E-BOARD-10** — the identity is resolved from the tracker once, then cached
 **Given** a reachable substitute tracker and no `MGMT_ME`
@@ -70,6 +80,14 @@ precisely, including that nothing but `status` is touched in it.*
 **When** a ticket is moved to a status with no transition to it
 **Then** the command fails naming the statuses that *are* available.
 
-**TC-E-BOARD-14** — `--serve --apply` without a token fails before serving
+**TC-E-BOARD-14** — `--apply` without a token fails before serving
 **Then** the command exits non-zero saying no drag could reach the tracker, rather
 than starting a server whose every drag would fail.
+
+**TC-E-BOARD-15** — a drag moves a ticket, end to end
+**Given** a board served with `--apply`
+**When** the page's own nonce is used to post a move
+**Then** the tracker transitions the ticket and the local file agrees.
+
+*This is the whole path in one case: served page → nonce → use case → tracker →
+file. The pieces are pinned separately in TC-I-SERVE and TC-U-MOVE.*

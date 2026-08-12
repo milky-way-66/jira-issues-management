@@ -5,7 +5,7 @@
  * in-process substitute and is only involved where identity is.
  */
 
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -22,13 +22,18 @@ function io(): Io & { stdout: string[]; stderr: string[] } {
   return { stdout, stderr, out: (l) => stdout.push(l), err: (l) => stderr.push(l), cwd: root, env: {} }
 }
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await stat(join(root, path))
-    return true
-  } catch {
-    return false
-  }
+/**
+ * Runs `mgmt board`, which serves until told to stop, and hands the running
+ * URL to `visit`. `hold` is the seam: the command waits on it instead of on the
+ * interrupt a person would type.
+ */
+async function serving(
+  argv: string[],
+  visit: (url: string) => Promise<void>,
+): Promise<Io & { stdout: string[]; stderr: string[]; code: number }> {
+  const out = io()
+  const code = await run(argv, { ...out, hold: visit })
+  return Object.assign(out, { code })
 }
 
 /** Writes a ticket file directly: the board reads the workspace, not the tracker. */
@@ -114,34 +119,52 @@ describe('with no credentials', () => {
     await setUpWorkspace([])
   })
 
-  it('TC-E-BOARD-01 writes board.html and exits 0', async () => {
-    const out = io()
+  it('TC-E-BOARD-01 serves the board on loopback and exits 0 when stopped', async () => {
+    let served = ''
+    const out = await serving(['board'], async (url) => {
+      served = url
+      expect((await fetch(url)).status).toBe(200)
+    })
 
-    expect(await run(['board'], out)).toBe(EXIT.ok)
-    expect(await exists('board.html')).toBe(true)
-    expect(out.stdout.join('\n')).toContain('board.html')
+    expect(out.code).toBe(EXIT.ok)
+    expect(served).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    expect(out.stdout.join('\n')).toContain(served)
   })
 
   it('TC-E-BOARD-02 includes every ticket in the working set', async () => {
-    await run(['board'], io())
-    const html = await readFile(join(root, 'board.html'), 'utf8')
+    await serving(['board'], async (url) => {
+      const html = await (await fetch(url)).text()
 
-    for (const id of ['PROJ-1', 'PROJ-2', 'PROJ-3']) expect(html).toContain(id)
-    expect(html).toContain('To Do')
-    expect(html).toContain('In Progress')
-    expect(html).toContain('Done')
+      for (const id of ['PROJ-1', 'PROJ-2', 'PROJ-3']) expect(html).toContain(id)
+      expect(html).toContain('To Do')
+      expect(html).toContain('In Progress')
+      expect(html).toContain('Done')
+    })
   })
 
-  it('TC-E-BOARD-03 writes elsewhere with --out', async () => {
-    expect(await run(['board', '--out', 'docs/board.html'], io())).toBe(EXIT.ok)
+  it('TC-E-BOARD-03 listens on the port it was given', async () => {
+    const out = await serving(['board', '--port', '8931'], async (url) => {
+      expect(url).toBe('http://127.0.0.1:8931')
+      expect((await fetch(url)).status).toBe(200)
+    })
 
-    expect(await exists('docs/board.html')).toBe(true)
-    expect(await exists('board.html')).toBe(false)
+    expect(out.code).toBe(EXIT.ok)
   })
 
-  it('TC-E-BOARD-04 emits the model with --json and writes no file', async () => {
+  it('TC-E-BOARD-03b shows an edit made while it is running', async () => {
+    await serving(['board'], async (url) => {
+      expect(await (await fetch(url)).text()).not.toContain('Written after the server started')
+
+      await ticket('PROJ-4', { title: 'Written after the server started' })
+
+      expect(await (await fetch(url)).text()).toContain('Written after the server started')
+    })
+  })
+
+  it('TC-E-BOARD-04 emits the model with --json and serves nothing', async () => {
     const out = io()
 
+    // No `hold`: --json must return on its own rather than start a server.
     expect(await run(['--json', 'board'], out)).toBe(EXIT.ok)
 
     const board = JSON.parse(out.stdout.join('\n')) as {
@@ -151,7 +174,6 @@ describe('with no credentials', () => {
     }
     expect(board.columns).toEqual(['To Do', 'In Progress', 'Done'])
     expect(board.project.total).toBe(3)
-    expect(await exists('board.html')).toBe(false)
   })
 
   it('TC-E-BOARD-05 filters the personal board with --me', async () => {
@@ -166,10 +188,11 @@ describe('with no credentials', () => {
   })
 
   it('TC-E-BOARD-06 still produces a board with no credentials', async () => {
-    const out = io()
+    const out = await serving(['board'], async (url) => {
+      expect(await (await fetch(url)).text()).toContain('PROJ-1')
+    })
 
-    expect(await run(['board'], out)).toBe(EXIT.ok)
-
+    expect(out.code).toBe(EXIT.ok)
     const text = out.stdout.join('\n')
     expect(text).toContain('3 tickets')
     expect(text).toMatch(/could not tell who you are/)
@@ -179,12 +202,12 @@ describe('with no credentials', () => {
 
   it('TC-E-BOARD-07 skips an unreadable ticket rather than failing', async () => {
     await writeFile(join(root, 'tickets', 'PROJ-9.md'), 'not a ticket at all', 'utf8')
-    const out = io()
 
-    expect(await run(['board'], out)).toBe(EXIT.ok)
+    const out = await serving(['board'], async (url) => {
+      expect(await (await fetch(url)).text()).toContain('PROJ-1')
+    })
 
-    const html = await readFile(join(root, 'board.html'), 'utf8')
-    expect(html).toContain('PROJ-1')
+    expect(out.code).toBe(EXIT.ok)
     expect(out.stderr.join('\n')).toContain('PROJ-9')
   })
 
@@ -197,11 +220,18 @@ describe('with no credentials', () => {
     expect(board.columns).toEqual(['Done', 'In Progress', 'To Do'])
   })
 
-  it('TC-E-BOARD-09 ignores the generated board and the identity cache', async () => {
-    const ignored = await readFile(join(root, '.gitignore'), 'utf8')
+  it('TC-E-BOARD-09 writes nothing into the workspace', async () => {
+    const before = (await readdir(root)).sort()
 
-    expect(ignored).toMatch(/^board\.html$/m)
-    expect(ignored).toMatch(/^\.sync\/identity\.json$/m)
+    await serving(['board'], async (url) => {
+      await fetch(url)
+    })
+
+    expect((await readdir(root)).sort()).toEqual(before)
+    // The identity file is the one thing a board may add, and it is ignored.
+    expect(await readFile(join(root, '.gitignore'), 'utf8')).toMatch(
+      /^\.sync\/identity\.json$/m,
+    )
   })
 })
 
@@ -269,8 +299,32 @@ describe('with a reachable tracker', () => {
     await setUpWorkspace([])
     const out = io()
 
-    expect(await run(['board', '--serve', '--apply'], out)).toBe(EXIT.error)
+    expect(await run(['board', '--apply'], out)).toBe(EXIT.error)
     expect(out.stderr.join('\n')).toContain('JIRA_PAT')
+  })
+
+  it('TC-E-BOARD-15 lets a drag move a ticket end to end', async () => {
+    await setUpWorkspace([`JIRA_PAT=${jira.token}`])
+    jira.seed({ summary: 'Title of PROJ-1', status: 'To Do' }, 'PROJ-1')
+
+    await serving(['board', '--apply'], async (url) => {
+      const page = await (await fetch(url)).text()
+      const nonce = /data-nonce="([^"]+)"/.exec(page)?.[1] ?? ''
+      expect(nonce).not.toBe('')
+
+      const res = await fetch(`${url}/api/move`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-mgmt-nonce': nonce },
+        body: JSON.stringify({ id: 'PROJ-1', to: 'In Progress' }),
+      })
+
+      expect(res.status).toBe(200)
+      expect(await res.json()).toMatchObject({ to: 'In Progress', applied: true })
+    })
+
+    expect(await readFile(join(root, 'tickets', 'PROJ-1.md'), 'utf8')).toContain(
+      'status: "In Progress"',
+    )
   })
 
   it('TC-E-BOARD-10b lets MGMT_ME in .env override the tracker', async () => {

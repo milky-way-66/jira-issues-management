@@ -316,12 +316,10 @@ document.querySelectorAll('.col').forEach(col => {
 
 export interface RenderOptions {
   project: string
-  /**
-   * Present when the board is being served by `mgmt board --serve`, which is
-   * the only arrangement where a drag can reach the tracker. The nonce
-   * authorises writes for this run; see board-server.ts.
-   */
-  live?: { nonce: string; apply: boolean }
+  /** Authorises writes for this run; see board-server.ts. */
+  nonce: string
+  /** Whether a drag may reach the tracker, i.e. whether `--apply` was given. */
+  apply: boolean
 }
 
 export function renderBoardHtml(board: Board, opts: RenderOptions): string {
@@ -332,22 +330,19 @@ export function renderBoardHtml(board: Board, opts: RenderOptions): string {
 
   const who = board.me ? `My tasks (${escapeHtml(board.me)})` : 'My tasks'
 
-  // Only a served board that was started with --apply may write. A file on disk
-  // is inert by construction, and `--serve` without `--apply` says so in the
-  // header rather than failing at the end of a drag.
-  const writable = Boolean(opts.live?.apply)
+  // Serving is not consenting to writes, so a board started without --apply
+  // says so in the header rather than failing at the end of a drag.
+  const writable = opts.apply
 
-  const mode = opts.live
-    ? writable
-      ? '<span class="mode live">drag to move</span>'
-      : '<span class="mode">read-only — restart with --apply to drag</span>'
-    : '<span class="mode">a file, so read-only — mgmt board --serve --apply to drag</span>'
+  const mode = writable
+    ? '<span class="mode live">drag to move</span>'
+    : '<span class="mode">read-only — restart with --apply to drag</span>'
 
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(opts.project)} board</title>
 <style>${STYLE}</style>
-<body data-live="${writable ? '1' : '0'}" data-nonce="${escapeHtml(opts.live?.nonce ?? '')}">
+<body data-live="${writable ? '1' : '0'}" data-nonce="${escapeHtml(opts.nonce)}">
 <header>
   <h1>${escapeHtml(opts.project)}</h1>
   <div class="tabs">

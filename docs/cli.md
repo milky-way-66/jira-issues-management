@@ -15,10 +15,9 @@ mgmt new "title" [--type Sub-task] [--parent PROJ-123]     # creates LOCAL-nnnn
 mgmt resolve <id> --take local | --take jira | --done
 
 mgmt index                 # regenerate INDEX.md
-mgmt board                 # generate board.html — two Kanban views
-mgmt board --me bob --columns "To Do,In Progress,Done"
-mgmt board --serve         # serve it on loopback, read-only
-mgmt board --serve --apply # ...and let a drag move a ticket
+mgmt board                 # serve two Kanban views on loopback, read-only
+mgmt board --apply         # ...and let a drag move a ticket
+mgmt board --me bob --columns "To Do,In Progress,Done" --port 8080
 
 mgmt move PROJ-1 "In Progress"           # DRY RUN
 mgmt move PROJ-1 "In Progress" --apply   # transition it
@@ -54,18 +53,23 @@ ticket is deliberate: split work, or a follow-up.
 
 ## The board
 
-`mgmt board` writes a Kanban view of the workspace to `board.html`: **Project tasks**
-(everything) and **My tasks** (assigned to you), sharing one set of columns so the two
-line up when you switch between them. Open it from the workspace root — each card links
-to its own `tickets/<id>.md` and, once pushed, to the tracker.
+`mgmt board` serves a Kanban view of the workspace on loopback and prints the URL:
+**Project tasks** (everything) and **My tasks** (assigned to you), sharing one set of
+columns so the two line up when you switch between them. Each card's title opens the
+ticket in the tracker; the `<id>.md` link at its foot opens the file.
 
-It reads the ticket files and nothing else, so it works on a plane and can never show
-something the files do not say. Like `mgmt index`, it needs no `--apply`: it generates a
-view and touches no ticket data.
+Nothing is written to the workspace. The board is served rather than generated because a
+drag has to reach Jira and only this process holds the token — a page on disk could not
+move anything, and giving it the means would put a token in the workspace. One mode means
+what you are looking at is always something that can act, and always current: the files
+are re-read on every load, so an edit shows on reload.
 
-The file is self-contained — no stylesheet, script, font or image is fetched from
-anywhere. That is deliberate: the board holds a customer's ticket titles, and a
-subresource would announce every open of it to whoever serves that resource.
+Reading the board needs no network at all; it is built from the ticket files.
+
+The page itself fetches nothing — no stylesheet, script, font or image from anywhere, and
+a `content-security-policy` of `default-src 'none'` to enforce it. That is deliberate: the
+board holds a customer's ticket titles, and a subresource would announce every open of it
+to whoever serves that resource.
 
 ### Columns
 
@@ -108,7 +112,7 @@ workspace — not a trade worth making for a drag gesture. So the token stays in
 process and the page talks to it instead:
 
 ```sh
-mgmt board --serve --apply
+mgmt board --apply
 ```
 
 Dragging a card to another column transitions the ticket in Jira, then updates the local
@@ -116,7 +120,7 @@ file and the merge base, so the next `mgmt sync` has nothing to reconcile. The c
 on screen only *after* the tracker confirms — and it lands in the column the tracker
 reports, which a workflow post-function can make different from where you dropped it.
 
-Three rules hold while serving:
+Three rules hold:
 
 - **Loopback only.** The socket binds `127.0.0.1`; nothing off the machine can reach it.
 - **A nonce on every write**, embedded in the served page. Any program on this machine
@@ -129,6 +133,9 @@ including which transitions *are* available.
 
 `mgmt move <id> <status>` does the same thing from the terminal, and like everything else
 that writes, it is a dry run until `--apply`.
+
+Ctrl-C stops the server. `mgmt board --json` prints the same board as data and returns
+immediately, for a script that wants the model rather than the page.
 
 ## Workspace discovery
 

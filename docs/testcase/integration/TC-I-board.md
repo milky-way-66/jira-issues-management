@@ -55,18 +55,11 @@ link at the foot of the card
 *Rationale: the tracker is where you act on a ticket. The file is one click away
 rather than zero.*
 
-**TC-I-BOARD-16** — a board written to a file cannot move anything
-**Then** it is marked not-live, carries no nonce, and says in the header that
-dragging needs `mgmt board --serve --apply`.
-
-*Rationale: a `file://` page has no way to reach Jira, and the only way to give it
-one would be to write a token into the workspace.*
-
-**TC-I-BOARD-17** — a served, applying board is draggable
+**TC-I-BOARD-17** — an applying board is draggable
 **Then** it is marked live, carries the nonce it was given, and every card is
 draggable with the status of the column it sits in.
 
-**TC-I-BOARD-18** — a served board without `--apply` is not live
+**TC-I-BOARD-18** — a board served without `--apply` is not live
 **Then** it carries no live flag, and the header says to restart with `--apply`.
 
 ## Identity
