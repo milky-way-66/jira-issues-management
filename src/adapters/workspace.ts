@@ -15,7 +15,7 @@ export const WORKSPACE_FILE = 'config.yml'
 
 /** Data format version this build reads and writes. */
 export const SCHEMA_VERSION = 1
-export const CLI_VERSION = '0.2.3'
+export const CLI_VERSION = '0.2.4'
 
 const ConfigSchema = z.object({
   mgmt: z.object({
@@ -120,18 +120,32 @@ async function hasConfig(dir: string): Promise<boolean> {
  * An undefined variable is an error rather than an empty string. Silently
  * substituting nothing would produce `base_url: ""`, and the failure would
  * surface later as a confusing URL parse error far from its cause.
+ *
+ * Comments are skipped. A file that documents the feature by showing
+ * `${JIRA_BASE_URL}` in a comment would otherwise demand that variable be set —
+ * which is exactly what the scaffolded `config.yml` does, so this is not a
+ * hypothetical.
  */
 export function interpolate(text: string, env: NodeJS.ProcessEnv): string {
   const missing: string[] = []
 
-  const out = text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => {
-    const value = env[name]
-    if (value === undefined || value === '') {
-      missing.push(name)
-      return ''
-    }
-    return value
-  })
+  const substitute = (part: string): string =>
+    part.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => {
+      const value = env[name]
+      if (value === undefined || value === '') {
+        missing.push(name)
+        return ''
+      }
+      return value
+    })
+
+  const out = text
+    .split('\n')
+    .map((line) => {
+      const [code, comment] = splitComment(line)
+      return substitute(code) + comment
+    })
+    .join('\n')
 
   if (missing.length > 0) {
     const names = [...new Set(missing)]
@@ -142,6 +156,33 @@ export function interpolate(text: string, env: NodeJS.ProcessEnv): string {
   }
 
   return out
+}
+
+/**
+ * Splits a YAML line into its code and its trailing comment.
+ *
+ * A `#` opens a comment when it starts the line or follows whitespace, and does
+ * not when it sits inside a quoted scalar — the same rule YAML itself applies.
+ */
+function splitComment(line: string): [code: string, comment: string] {
+  let quote: string | null = null
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (quote !== null) {
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+    if (ch === '#' && (i === 0 || /\s/.test(line[i - 1] ?? ''))) {
+      return [line.slice(0, i), line.slice(i)]
+    }
+  }
+
+  return [line, '']
 }
 
 export async function loadConfig(

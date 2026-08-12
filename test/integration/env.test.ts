@@ -177,4 +177,31 @@ describe('TC-I-ENV — a workspace configured entirely through .env', () => {
       await jira.stop()
     }
   })
+
+  it('TC-I-ENV-14 leaves a reference inside a comment alone', async () => {
+    await writeFile(
+      join(root, 'config.yml'),
+      [
+        'mgmt:',
+        '  schema_version: 1',
+        '  cli_range: ">=0.1.0 <1.0.0"',
+        'jira:',
+        '  # base_url: "${JIRA_BASE_URL}"   <- how you would keep it out of git',
+        '  base_url: "https://jira.example.com"',
+        '  project: "PROJ"  # or "${JIRA_PROJECT}"',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+
+    // Neither variable is set anywhere; mentioning one must not demand it.
+    const config = await loadConfig(root, {})
+
+    expect(config.jira.base_url).toBe('https://jira.example.com')
+    expect(config.jira.project).toBe('PROJ')
+  })
+
+  it('TC-I-ENV-15 does not treat a # inside a quoted value as a comment', () => {
+    expect(interpolate('project: "PROJ#${SUFFIX}"', { SUFFIX: 'X' })).toBe('project: "PROJ#X"')
+  })
 })

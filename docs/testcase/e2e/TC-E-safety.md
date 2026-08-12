@@ -148,11 +148,16 @@ what `cli_range` compares against, in a gate with no bypass flag — so a worksp
 pinning `>=0.1.1` would refuse a CLI that was genuinely 0.1.1, naming a version the
 user can plainly see is installed.*
 
-**TC-E-SAFE-15g** — a scaffolded workspace admits the CLI that scaffolded it
-**When** `mgmt init` runs and then any command
-**Then** the exit code is not 3.
+**TC-E-SAFE-15g** — the first command in a scaffolded workspace succeeds
+**When** `mgmt init` runs and then any command, with nothing set in the environment
+**Then** it exits 0.
 
 *The template pins `cli_range`, and a version bump can leave it behind — so `mgmt
 init` would produce a workspace the very next command refuses, in a gate with no
 bypass flag. That is the worst possible first run, and it is one forgotten line away
 at every minor release.*
+
+*It asserts success, not merely "not incompatible". The weaker form let a real
+failure through: the template documents `${VAR}` in a comment, interpolation read
+comments, and so a fresh workspace demanded variables it only mentioned — exit 1,
+which "not 3" happily accepted.*

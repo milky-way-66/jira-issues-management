@@ -63,6 +63,18 @@ a URL parse error a long way from its cause.*
 **Given** a value containing `$` or `${` without a closing brace
 **Then** it passes through unchanged.
 
+**TC-I-ENV-14** — a reference inside a comment is left alone
+**Given** `config.yml` documents the feature with `# base_url: "${JIRA_BASE_URL}"`
+and that variable is not set
+**Then** the file loads, and the comment is untouched.
+
+*Rationale: the scaffolded `config.yml` documents `${VAR}` in exactly that way, so
+without this a freshly initialised workspace demands variables it only mentions.*
+
+**TC-I-ENV-15** — a `#` inside a quoted value is not a comment
+**Given** `project: "PROJ#${SUFFIX}"`
+**Then** the reference after the `#` is still substituted.
+
 ## End to end
 
 **TC-I-ENV-13** — a workspace configured entirely through `.env` works

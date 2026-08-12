@@ -443,10 +443,14 @@ describe('TC-E-SAFE — repository hygiene', () => {
       const status = io({ cwd: fresh })
       const code = await run(['status'], status)
 
+      // Not merely "not incompatible": the first command in a fresh workspace
+      // must simply work, with nothing set in the environment. A template that
+      // documents `${VAR}` in a comment used to fail here — and a weaker
+      // assertion let it through, because the exit code was 1 rather than 3.
       expect(
         code,
         `a freshly scaffolded workspace rejected CLI ${CLI_VERSION}: ${status.stderr.join('\n')}`,
-      ).not.toBe(EXIT.incompatible)
+      ).toBe(EXIT.ok)
     } finally {
       await rm(fresh, { recursive: true, force: true })
     }
