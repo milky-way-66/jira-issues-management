@@ -42,8 +42,11 @@ import { MarkdownTicketRepo } from './markdown-repo.js'
 import { refreshTemplates, scaffold } from './scaffold.js'
 import {
   CLI_VERSION,
+  SCHEMA_VERSION,
   VersionError,
   WorkspaceError,
+  findWorkspaceRoot,
+  migrate,
   openWorkspace,
   type Workspace,
 } from './workspace.js'
@@ -178,6 +181,15 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
     })
 
   program
+    .command('migrate')
+    .description('raise the workspace schema version')
+    .action(async () => {
+      // Runs without the compatibility check: clearing an incompatibility is
+      // the entire point, so the check that reports it must not block it.
+      code = await cmdMigrate(io, (global()['workspace'] as string | undefined) ?? io.cwd)
+    })
+
+  program
     .command('upgrade')
     .description('refresh the agent templates to match the installed CLI')
     .action(
@@ -240,6 +252,21 @@ async function cmdInit(io: Io, root: string): Promise<number> {
   else io.out('\nNext: copy .env.example to .env, add a token, then run `mgmt doctor`.')
 
   return EXIT.ok
+}
+
+async function cmdMigrate(io: Io, from: string): Promise<number> {
+  try {
+    const root = await findWorkspaceRoot(from, { env: process.env['MGMT_WORKSPACE'] })
+    const result = await migrate(root)
+
+    if (!result) io.out(`Workspace is already at schema version ${SCHEMA_VERSION}.`)
+    else io.out(`Migrated schema_version ${result.from} → ${result.to} in config.yml.`)
+
+    return EXIT.ok
+  } catch (err) {
+    io.err((err as Error).message)
+    return err instanceof VersionError ? EXIT.incompatible : EXIT.error
+  }
 }
 
 async function cmdDoctor(io: Io, ws: Workspace, json: boolean): Promise<number> {

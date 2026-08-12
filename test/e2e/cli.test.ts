@@ -73,9 +73,22 @@ describe('TC-E-FLOW — scaffolding', () => {
     for (const dir of ['tickets', 'issues', 'archive', '.sync/base']) {
       await expect(readFile(join(root, dir, '.gitkeep'), 'utf8')).resolves.toBe('')
     }
+    for (const skill of ['mgmt', 'mgmt-sync', 'mgmt-resolve', 'mgmt-triage', 'mgmt-write', 'mgmt-report']) {
+      await expect(
+        readFile(join(root, '.claude/skills', skill, 'SKILL.md'), 'utf8'),
+      ).resolves.toContain('---')
+    }
+
+    // The router is what routes; without it the narrower skills compete.
     await expect(
-      readFile(join(root, '.claude/skills/tickets/SKILL.md'), 'utf8'),
+      readFile(join(root, '.claude/skills/mgmt/SKILL.md'), 'utf8'),
     ).resolves.toContain('mgmt status')
+
+    // The two rules whose violation is silent and expensive are enforced, not
+    // merely requested in prose.
+    const settings = await readFile(join(root, '.claude/settings.json'), 'utf8')
+    expect(settings).toContain('Edit(.sync/**)')
+    expect(settings).toContain('Bash(curl:*)')
   })
 
   it('TC-E-SAFE-11 mgmt init gitignores .env', async () => {

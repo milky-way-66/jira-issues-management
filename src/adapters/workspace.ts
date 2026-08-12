@@ -5,7 +5,7 @@
  * this is the only place that knows about the filesystem shape.
  */
 
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
@@ -18,7 +18,10 @@ export const CLI_VERSION = '0.1.0'
 
 const ConfigSchema = z.object({
   mgmt: z.object({
-    schema_version: z.number().int().positive(),
+    // Nonnegative rather than positive: an older-than-current version is not a
+    // malformed file, it is a workspace awaiting `mgmt migrate`. Rejecting it
+    // as invalid YAML would give the wrong instruction at the wrong moment.
+    schema_version: z.number().int().nonnegative(),
     cli_range: z.string().min(1),
   }),
   jira: z.object({
@@ -180,6 +183,35 @@ function compare(a: [number, number, number], b: [number, number, number]): numb
     if (d !== 0) return d
   }
   return 0
+}
+
+/**
+ * Raises the workspace schema version.
+ *
+ * Deliberately a text edit rather than a parse-and-reserialise: reserialising
+ * would reformat the file and drop every comment, burying the one line that
+ * changed in a wholesale rewrite. A migration must be reviewable as a diff.
+ *
+ * It is also the one command that must run *without* the compatibility check,
+ * since its whole purpose is to clear an incompatibility.
+ */
+export async function migrate(root: string): Promise<{ from: number; to: number } | null> {
+  const path = join(root, WORKSPACE_FILE)
+  const text = await readFile(path, 'utf8')
+
+  const match = text.match(/^(\s*schema_version:\s*)(\d+)\s*$/m)
+  if (!match) throw new WorkspaceError(`${path}: no schema_version to migrate`)
+
+  const from = Number(match[2])
+  if (from === SCHEMA_VERSION) return null
+  if (from > SCHEMA_VERSION) {
+    throw new VersionError(
+      `workspace schema ${from} is newer than this CLI understands (${SCHEMA_VERSION}). Upgrade the CLI instead.`,
+    )
+  }
+
+  await writeFile(path, text.replace(match[0], `${match[1]}${SCHEMA_VERSION}`), 'utf8')
+  return { from, to: SCHEMA_VERSION }
 }
 
 export async function openWorkspace(

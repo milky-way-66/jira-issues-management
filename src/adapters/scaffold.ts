@@ -48,6 +48,9 @@ const FILES: [string, string][] = [
   ['env.example', '.env.example'],
   ['config.yml', 'config.yml'],
   ['CLAUDE.md', 'CLAUDE.md'],
+  // Different agent tools look for different filenames; this one points at the
+  // other rather than duplicating it, so the two cannot drift apart.
+  ['AGENTS.md', 'AGENTS.md'],
 ]
 
 export async function scaffold(root: string, templates = templatesDir()): Promise<ScaffoldResult> {
@@ -77,12 +80,12 @@ export async function scaffold(root: string, templates = templatesDir()): Promis
     created.push(dest)
   }
 
-  const skills = join(root, '.claude')
-  if (await exists(join(skills, 'skills', 'tickets', 'SKILL.md'))) {
-    skipped.push('.claude/skills/tickets')
+  const claude = join(root, '.claude')
+  if (await exists(join(claude, 'skills', 'mgmt', 'SKILL.md'))) {
+    skipped.push('.claude')
   } else {
-    await cp(join(templates, 'claude'), skills, { recursive: true })
-    created.push('.claude/skills/tickets')
+    await cp(join(templates, 'claude'), claude, { recursive: true })
+    created.push('.claude')
   }
 
   return { created, skipped }
@@ -94,13 +97,11 @@ export async function scaffold(root: string, templates = templatesDir()): Promis
  * overwrite — but never `config.yml`, which holds settings the user owns.
  */
 export async function refreshTemplates(root: string, templates = templatesDir()): Promise<string[]> {
-  await writeFile(
-    join(root, 'CLAUDE.md'),
-    await readFile(join(templates, 'CLAUDE.md'), 'utf8'),
-    'utf8',
-  )
+  for (const name of ['CLAUDE.md', 'AGENTS.md']) {
+    await writeFile(join(root, name), await readFile(join(templates, name), 'utf8'), 'utf8')
+  }
   await cp(join(templates, 'claude'), join(root, '.claude'), { recursive: true, force: true })
-  return ['CLAUDE.md', '.claude/skills/tickets']
+  return ['CLAUDE.md', '.claude/skills', '.claude/settings.json']
 }
 
 async function exists(path: string): Promise<boolean> {

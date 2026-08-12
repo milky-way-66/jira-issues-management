@@ -4,10 +4,17 @@ This directory is a ticket workspace managed by the `mgmt` CLI. Tickets are
 Markdown files with YAML frontmatter; the tracker is the system of record for
 some fields and the local files are authoritative for others.
 
+Agents should start from the `mgmt` skill, which routes to the narrower ones.
+
 ## Rules
 
+- **Never call the tracker's API directly** — no `curl`, no SDK, no scripts. The
+  CLI is where every safeguard lives: schema validation, dry-run, duplicate
+  protection, `local-only` stripping. Going around it discards all of them at
+  once, and silently. This is enforced in `.claude/settings.json`.
 - **Never edit files under `.sync/`.** Those are merge bases and cursors. Editing
   one makes the next merge compute a difference that never happened.
+- **Never edit the `sync:` block** in a ticket's frontmatter. The tool owns it.
 - **Never hand-edit a field the tracker owns** (`status`, `assignee`, `type`,
   `parent`, `priority`, `due`). Change it in the tracker, then pull. Editing it
   locally produces a conflict, not an update.

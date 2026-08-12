@@ -15,10 +15,16 @@ you actually work.
 
 ## Status
 
-**Pre-alpha — design and test specification only.** No code yet. The documents in
-[`docs/`](docs/) define the behaviour; the test cases in
-[`docs/testcase/`](docs/testcase/) define what "correct" means. Implementation follows
-them, not the other way around.
+**Alpha — feature-complete against its specification, not yet used in anger.**
+
+Every command in [`docs/cli.md`](docs/cli.md) is implemented, and all 152 specified
+test cases have automated coverage (232 tests). `npm run trace` enforces that number:
+a spec case with no test, or a test citing a case that does not exist, fails the build.
+
+What that does *not* mean: it has not run against a production Jira for a sustained
+period. Field mappings invented from a specification are exactly the kind of thing a
+real instance disproves — see [`docs/local-jira.md`](docs/local-jira.md) for how to
+check them against one before trusting it with real tickets.
 
 ## Why files
 
@@ -43,16 +49,40 @@ Not published yet. Once tagged:
 npm i -g git+ssh://git@github.com/milky-way-66/jira-issues-management.git#v0.1.0
 ```
 
-## Quick start (planned)
+## Quick start
 
 ```sh
-mgmt init                 # scaffold a workspace: config.yml, .claude/
-mgmt doctor               # verify tokens, server version, custom field ids
+mgmt init                 # scaffold a workspace: config.yml, .claude/, tickets/
+cp .env.example .env      # add JIRA_PAT
+mgmt doctor               # verify token, server version, custom field ids
 mgmt sync                 # show what would change — writes nothing
 mgmt sync --apply         # do it
 ```
 
+`mgmt doctor` tells you the Epic Link custom field id for your instance. Record it in
+`config.yml`; guessing it means writing parent links into whatever field happens to
+hold that number.
+
 See [`docs/cli.md`](docs/cli.md) for the full command list.
+
+## Working through an agent
+
+`mgmt init` also scaffolds `.claude/` with a router skill (`mgmt`) and five narrower
+ones — triage, write, sync, resolve, report — plus a `settings.json` that denies
+direct API calls and edits to `.sync/`.
+
+Those two rules are enforced rather than merely stated, because the CLI is where every
+safeguard lives: schema validation, dry-run, duplicate protection, `local-only`
+stripping. An agent reaching past it discards all of them at once, and silently.
+
+## Testing without a Jira instance
+
+The suite runs against an in-process substitute that speaks the same REST subset over
+loopback — no licence, no container, no network. The adapter additionally refuses any
+non-loopback host while tests are running, with no opt-out.
+
+For the mapping questions a substitute cannot answer, [`docs/local-jira.md`](docs/local-jira.md)
+covers running a real instance in Docker.
 
 ## Compatibility
 
@@ -70,6 +100,7 @@ See [`docs/cli.md`](docs/cli.md) for the full command list.
 | [docs/data-format.md](docs/data-format.md) | What a ticket file looks like |
 | [docs/sync-algorithm.md](docs/sync-algorithm.md) | How two-way sync decides what to do |
 | [docs/cli.md](docs/cli.md) | Commands and flags |
+| [docs/local-jira.md](docs/local-jira.md) | Testing against a real Jira, locally |
 | [docs/testcase/](docs/testcase/) | Executable definition of correct behaviour |
 
 ## License

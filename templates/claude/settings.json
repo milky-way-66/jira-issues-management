@@ -1,0 +1,42 @@
+{
+  "$comment": [
+    "Permissions for agents working in this workspace.",
+    "",
+    "These are the same rules the skills state in prose. They are duplicated here",
+    "because a rule that lives only in a prompt is a suggestion: it survives only",
+    "as long as the model keeps it in context. The two that matter — no direct API",
+    "calls, no editing .sync/ — are exactly the ones whose violation is silent and",
+    "expensive, so they are enforced rather than requested.",
+    "",
+    "Adjust the allow list to taste. Do not weaken the deny list without",
+    "understanding what each entry prevents."
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(mgmt:*)",
+      "Read(//**)",
+      "Edit(tickets/**)",
+      "Write(tickets/**)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+
+      "$comment: the merge bases and cursors. A hand-edited base makes the next merge compute a difference that never happened.",
+      "Edit(.sync/**)",
+      "Write(.sync/**)",
+
+      "$comment: issues/ mirrors a read-only external source; edits there are overwritten on the next pull.",
+      "Edit(issues/**)",
+      "Write(issues/**)",
+
+      "$comment: going around the CLI discards schema validation, dry-run, duplicate protection and local-only stripping, all at once and silently.",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh api:*)",
+      "Bash(http:*)",
+      "Bash(https:*)"
+    ]
+  }
+}
