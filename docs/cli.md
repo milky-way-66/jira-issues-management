@@ -5,6 +5,7 @@ mgmt sync                  # pull external + pull tracker + push tracker — DRY
 mgmt sync --apply          # actually perform it
 mgmt sync --only jira      # restrict to one side
 mgmt sync --limit 10       # cap the number of tickets touched (blast-radius control)
+mgmt sync --scheduled      # no-op unless sync.scheduled is on — for cron
 
 mgmt pull github [--full]  # --full reconciles deleted/transferred issues
 
@@ -57,6 +58,9 @@ scripts, CI, and coding agents. Both come from the same object.
 | 1 | unexpected error (network, auth, malformed data) |
 | 2 | conflicts present — sync completed for other tickets, these need a human |
 | 3 | version incompatibility between CLI and workspace `schema_version` |
+
+A disabled scheduled run exits 0, not 1. It is a decision, not a failure, and a
+nonzero code would page someone every interval. See [scheduling.md](scheduling.md).
 
 Code 2 matters for automation: a scheduled run should surface conflicts as an alert
 without treating the whole run as a failure.

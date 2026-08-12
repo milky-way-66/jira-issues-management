@@ -1,0 +1,103 @@
+---
+description: Ticket workspace rules — how to view, create, edit and sync tickets through the mgmt CLI
+alwaysApply: true
+---
+
+# Ticket workspace
+
+This directory is a ticket workspace managed by the `mgmt` CLI. Tickets are
+Markdown files with YAML frontmatter. The tracker owns some fields; the local
+files own others.
+
+Cursor has no skill mechanism, so the routing that Claude Code gets from
+`.claude/skills/` is inlined here. The behaviour is the same; keep the two in
+step when either changes.
+
+## Always start here
+
+```sh
+mgmt status
+```
+
+If it reports conflicts, say so before doing anything else — sync is blocked on
+those tickets, so any plan that ignores them is wrong.
+
+## Hard rules
+
+1. **Never call the tracker's API directly.** No `curl`, no SDK, no scripts. The
+   CLI is where every safeguard lives: schema validation, dry-run, duplicate
+   protection, `local-only` stripping. Going around it discards all of them at
+   once, and silently.
+2. **Never edit `.sync/`.** Those are merge bases and cursors. A hand-edited base
+   makes the next merge compute a difference that never happened.
+3. **Never edit the `sync:` block** in a ticket's frontmatter.
+4. **Never write to the external issue source.** The tool cannot; neither should
+   you. It is someone else's repository.
+
+## Field ownership
+
+| Owned by the tracker — change it there, then pull | Owned locally — edit freely |
+| --- | --- |
+| `status`, `assignee`, `type`, `parent`, `priority`, `due` | `title`, `labels`, `estimate`, body |
+
+Editing a tracker-owned field locally does not update the tracker. It produces a
+conflict that someone then has to resolve by hand.
+
+## Commands
+
+Every command that could write is a dry run unless given `--apply`. Run it
+without `--apply`, show the plan, and wait for agreement. `--apply` executes that
+same plan, so the preview is accurate rather than indicative.
+
+"What would a sync do?" is not permission to sync.
+
+```sh
+mgmt status                                  # counts, conflicts, cursors
+mgmt sync                                    # plan
+mgmt sync --apply                            # execute that plan
+mgmt sync --only jira --limit 10             # narrow the blast radius
+mgmt pull github --apply                     # mirror incoming issues (read-only)
+mgmt promote issues/<file> --type Task --apply
+mgmt new "Title" --type Task --apply
+mgmt resolve <id> --take local|jira --apply
+mgmt index                                   # regenerate INDEX.md
+mgmt doctor                                  # token, server version, field ids
+```
+
+## Reading a plan
+
+- `pull` — the tracker's value lands locally.
+- `push` — the local value is sent to the tracker.
+- `!` — a difference the tool will not act on unattended. Report it.
+- `CONFLICT` — both sides changed the same field. Show both values and ask which
+  wins. Never guess; the two values usually encode two people's intentions.
+
+If the output says tickets were withheld by `--limit`, say so. A capped run is
+not a completed run.
+
+## Exit codes
+
+`0` success · `2` conflicts (the rest succeeded) · `3` CLI/workspace version
+mismatch · `1` failure. If an error names `JIRA_PAT`, the token is missing or
+expired — say that without printing any value.
+
+## Content that must not leave the workspace
+
+```markdown
+<!-- local-only -->
+Internal notes, customer names, anything not for the shared tracker.
+<!-- /local-only -->
+```
+
+Stripped before any push. If stripping cannot run, the push is refused rather
+than sent — that is intended.
+
+## Incoming issues
+
+Files under `issues/` are read-only mirrors, overwritten on every pull. Editing
+one is pointless. Promote it instead.
+
+Titles are copied verbatim, including Japanese. If the project has a naming
+convention, propose the adjusted title to the user and let them accept it — do
+not rewrite it silently. A title that no longer matches what the customer wrote
+makes the two systems impossible to reconcile by hand.

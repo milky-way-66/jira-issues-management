@@ -33,8 +33,18 @@ const ConfigSchema = z.object({
     .object({ repos: z.array(z.string()).default([]) })
     .default({ repos: [] }),
   sync: z
-    .object({ archive_after_days: z.number().int().positive().default(90) })
-    .default({ archive_after_days: 90 }),
+    .object({
+      archive_after_days: z.number().int().positive().default(90),
+      /**
+       * Whether a scheduled run may sync this workspace. Off by default and
+       * per-workspace on purpose: only one machine in a team should hold the
+       * schedule, and the person who set it up is rarely the person surprised
+       * by it. `mgmt sync --scheduled` is a no-op while this is false, so the
+       * cron entry can stay installed and inert.
+       */
+      scheduled: z.boolean().default(false),
+    })
+    .default({ archive_after_days: 90, scheduled: false }),
 })
 
 export type Config = z.infer<typeof ConfigSchema>

@@ -26,3 +26,14 @@ github:
 sync:
   # Closed tickets move to `archive/` after this many days. Nothing is deleted.
   archive_after_days: 30
+
+  # Whether a scheduled run may sync this workspace.
+  #
+  # Off by default, and only one machine in a team should turn it on — several
+  # machines syncing the same workspace on a timer produce conflicting commits
+  # rather than faster syncs.
+  #
+  # `mgmt sync --apply --scheduled` does nothing while this is false, so the
+  # cron entry can be installed once and left inert until it is wanted.
+  # See docs/scheduling.md.
+  scheduled: false

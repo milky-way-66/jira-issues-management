@@ -115,7 +115,8 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
     .option('--apply', 'perform the plan instead of previewing it')
     .option('--only <side>', 'restrict to "jira" or "github"')
     .option('--limit <n>', 'cap the number of tickets touched', Number)
-    .action(async (opts: { apply?: boolean; only?: string; limit?: number }) => {
+    .option('--scheduled', 'do nothing unless sync.scheduled is enabled for this workspace')
+    .action(async (opts: { apply?: boolean; only?: string; limit?: number; scheduled?: boolean }) => {
       code = await withWorkspace(io, global(), (ws) => cmdSync(io, ws, opts, !!global()['json']))
     })
 
@@ -292,9 +293,17 @@ async function cmdDoctor(io: Io, ws: Workspace, json: boolean): Promise<number> 
 async function cmdSync(
   io: Io,
   ws: Workspace,
-  opts: { apply?: boolean; only?: string; limit?: number },
+  opts: { apply?: boolean; only?: string; limit?: number; scheduled?: boolean },
   json: boolean,
 ): Promise<number> {
+  // A scheduled run is opt-in per workspace, so the cron entry can stay
+  // installed and inert. Exit 0: a disabled schedule is a decision, not a
+  // failure, and a nonzero code here would page someone every interval.
+  if (opts.scheduled && !ws.config.sync.scheduled) {
+    io.out('Scheduled sync is disabled for this workspace (sync.scheduled: false).')
+    return EXIT.ok
+  }
+
   if (opts.only && opts.only !== 'jira' && opts.only !== 'github') {
     io.err(`--only accepts "jira" or "github", not "${opts.only}"`)
     return EXIT.error

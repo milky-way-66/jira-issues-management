@@ -7,6 +7,11 @@ process.env.TZ = 'Asia/Tokyo'
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
+    // test/live/ talks to a real instance. It is opt-in via `npm run test:live`
+    // and excluded here so the default run can never reach a tracker — the
+    // file's own env guard would skip it, but excluding it makes that a
+    // property of the configuration rather than of remembering to check.
+    exclude: ['node_modules/**', 'test/live/**'],
     environment: 'node',
     coverage: {
       provider: 'v8',

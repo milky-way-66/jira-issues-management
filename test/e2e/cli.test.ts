@@ -89,6 +89,12 @@ describe('TC-E-FLOW — scaffolding', () => {
     const settings = await readFile(join(root, '.claude/settings.json'), 'utf8')
     expect(settings).toContain('Edit(.sync/**)')
     expect(settings).toContain('Bash(curl:*)')
+
+    // A team splits between editors, and which one a given person uses is not
+    // knowable at init time — so both are scaffolded, always.
+    const cursor = await readFile(join(root, '.cursor/rules/mgmt.mdc'), 'utf8')
+    expect(cursor).toContain('alwaysApply: true')
+    expect(cursor).toContain('mgmt status')
   })
 
   it('TC-E-SAFE-11 mgmt init gitignores .env', async () => {

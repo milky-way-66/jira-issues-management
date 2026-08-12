@@ -80,12 +80,19 @@ export async function scaffold(root: string, templates = templatesDir()): Promis
     created.push(dest)
   }
 
-  const claude = join(root, '.claude')
-  if (await exists(join(claude, 'skills', 'mgmt', 'SKILL.md'))) {
-    skipped.push('.claude')
-  } else {
-    await cp(join(templates, 'claude'), claude, { recursive: true })
-    created.push('.claude')
+  // Both editors are scaffolded unconditionally. Which one a given person uses
+  // is not knowable at init time, and a team usually splits between them.
+  for (const [source, dest, probe] of [
+    ['claude', '.claude', join('skills', 'mgmt', 'SKILL.md')],
+    ['cursor', '.cursor', join('rules', 'mgmt.mdc')],
+  ] as const) {
+    const path = join(root, dest)
+    if (await exists(join(path, probe))) {
+      skipped.push(dest)
+      continue
+    }
+    await cp(join(templates, source), path, { recursive: true })
+    created.push(dest)
   }
 
   return { created, skipped }
@@ -101,7 +108,8 @@ export async function refreshTemplates(root: string, templates = templatesDir())
     await writeFile(join(root, name), await readFile(join(templates, name), 'utf8'), 'utf8')
   }
   await cp(join(templates, 'claude'), join(root, '.claude'), { recursive: true, force: true })
-  return ['CLAUDE.md', '.claude/skills', '.claude/settings.json']
+  await cp(join(templates, 'cursor'), join(root, '.cursor'), { recursive: true, force: true })
+  return ['CLAUDE.md', 'AGENTS.md', '.claude/', '.cursor/rules/mgmt.mdc']
 }
 
 async function exists(path: string): Promise<boolean> {

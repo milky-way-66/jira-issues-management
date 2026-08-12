@@ -146,6 +146,45 @@ describe('TC-E-SAFE — schema migration', () => {
   })
 })
 
+describe('TC-E-SAFE — scheduled runs are opt-in', () => {
+  it('TC-E-SAFE-16 --scheduled does nothing while the workspace has it disabled', async () => {
+    jira.seed({ summary: 'Would be pulled', status: 'To Do' })
+
+    const o = io()
+    // Exit 0, not an error: a disabled schedule is a decision, and a nonzero
+    // code here would page someone every interval.
+    expect(await run(['sync', '--apply', '--scheduled'], o)).toBe(EXIT.ok)
+    expect(o.stdout.join('\n')).toContain('Scheduled sync is disabled')
+
+    // Nothing was read from or written to the tracker.
+    expect(jira.requests).toEqual([])
+    await expect(readdir(join(root, 'tickets'))).resolves.toEqual(['.gitkeep'])
+  })
+
+  it('TC-E-SAFE-16b enabling it lets the same command through', async () => {
+    jira.seed({ summary: 'Would be pulled', status: 'To Do' })
+
+    const config = await readFile(join(root, 'config.yml'), 'utf8')
+    await writeFile(
+      join(root, 'config.yml'),
+      `${config}sync:\n  scheduled: true\n`,
+      'utf8',
+    )
+
+    expect(await run(['sync', '--apply', '--scheduled'], io())).toBe(EXIT.ok)
+    await expect(readdir(join(root, 'tickets'))).resolves.toContain('PROJ-1.md')
+  })
+
+  it('TC-E-SAFE-16c a manual sync ignores the toggle entirely', async () => {
+    jira.seed({ summary: 'Would be pulled', status: 'To Do' })
+
+    // The toggle gates *scheduled* runs. Letting it block a person who typed
+    // the command would be baffling.
+    expect(await run(['sync', '--apply'], io())).toBe(EXIT.ok)
+    await expect(readdir(join(root, 'tickets'))).resolves.toContain('PROJ-1.md')
+  })
+})
+
 describe('TC-E-SAFE — partial failure', () => {
   const BASE_FIELDS: FieldSet = {
     title: 'Review monitoring documentation',

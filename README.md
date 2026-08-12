@@ -17,8 +17,8 @@ you actually work.
 
 **Alpha — feature-complete against its specification, not yet used in anger.**
 
-Every command in [`docs/cli.md`](docs/cli.md) is implemented, and all 152 specified
-test cases have automated coverage (232 tests). `npm run trace` enforces that number:
+Every command in [`docs/cli.md`](docs/cli.md) is implemented, and all 153 specified
+test cases have automated coverage (235 tests). `npm run trace` enforces that number:
 a spec case with no test, or a test citing a case that does not exist, fails the build.
 
 What that does *not* mean: it has not run against a production Jira for a sustained
@@ -43,16 +43,20 @@ check them against one before trusting it with real tickets.
 
 ## Install
 
-Not published yet. Once tagged:
+Not published to npm. Install from the repository:
 
 ```sh
 npm i -g git+ssh://git@github.com/milky-way-66/jira-issues-management.git#v0.1.0
 ```
 
+Pin a tag. A scheduled job that upgrades itself overnight and breaks is the worst
+failure mode available — `cli_range` in `config.yml` refuses a CLI outside the range
+the workspace allows, and exits 3 rather than touching the data.
+
 ## Quick start
 
 ```sh
-mgmt init                 # scaffold a workspace: config.yml, .claude/, tickets/
+mgmt init                 # scaffold a workspace: config.yml, tickets/, agent rules
 cp .env.example .env      # add JIRA_PAT
 mgmt doctor               # verify token, server version, custom field ids
 mgmt sync                 # show what would change — writes nothing
@@ -67,9 +71,13 @@ See [`docs/cli.md`](docs/cli.md) for the full command list.
 
 ## Working through an agent
 
-`mgmt init` also scaffolds `.claude/` with a router skill (`mgmt`) and five narrower
-ones — triage, write, sync, resolve, report — plus a `settings.json` that denies
-direct API calls and edits to `.sync/`.
+`mgmt init` scaffolds both editors, since a team usually splits between them:
+
+- **Claude Code** — `.claude/skills/` with a router (`mgmt`) and five narrower skills
+  (triage, write, sync, resolve, report), plus a `settings.json` that denies direct API
+  calls and edits to `.sync/`.
+- **Cursor** — `.cursor/rules/mgmt.mdc`, always applied. Cursor has no skill mechanism,
+  so the routing is inlined there.
 
 Those two rules are enforced rather than merely stated, because the CLI is where every
 safeguard lives: schema validation, dry-run, duplicate protection, `local-only`
@@ -82,7 +90,15 @@ loopback — no licence, no container, no network. The adapter additionally refu
 non-loopback host while tests are running, with no opt-out.
 
 For the mapping questions a substitute cannot answer, [`docs/local-jira.md`](docs/local-jira.md)
-covers running a real instance in Docker.
+covers running a real instance in Docker. Point the opt-in suite at it:
+
+```sh
+MGMT_LIVE_JIRA_URL=http://localhost:8080 MGMT_LIVE_JIRA_PAT=... npm run test:live
+```
+
+Those checks assert *shapes*, never values this repository chose — a fixture invented
+from a specification encodes the guess, not the fact. They are excluded from `npm test`
+by configuration, not by remembering to skip them.
 
 ## Compatibility
 
@@ -101,6 +117,7 @@ covers running a real instance in Docker.
 | [docs/sync-algorithm.md](docs/sync-algorithm.md) | How two-way sync decides what to do |
 | [docs/cli.md](docs/cli.md) | Commands and flags |
 | [docs/local-jira.md](docs/local-jira.md) | Testing against a real Jira, locally |
+| [docs/scheduling.md](docs/scheduling.md) | Running sync on a timer, and its off switch |
 | [docs/testcase/](docs/testcase/) | Executable definition of correct behaviour |
 
 ## License

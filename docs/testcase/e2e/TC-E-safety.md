@@ -75,6 +75,24 @@ code is 1, and the next run completes the remainder.
 
 **TC-E-SAFE-13** — an authentication error names the variable, never the value
 
+## Scheduled runs
+
+**TC-E-SAFE-16** — `--scheduled` does nothing while the workspace has it disabled
+**Given** `sync.scheduled: false` (the default)
+**When** `mgmt sync --apply --scheduled` runs
+**Then** no request reaches the tracker, no file is written, and the exit code is **0**.
+
+*Rationale: the cron entry is installed once and left inert, so turning the schedule
+on or off is a one-line change in a version-controlled file rather than a crontab edit
+nobody else can see. Exit 0 because a disabled schedule is a decision, not a failure —
+a nonzero code would page someone every interval.*
+
+**TC-E-SAFE-16b** — enabling it lets the same command through
+**TC-E-SAFE-16c** — a manual `mgmt sync --apply` ignores the toggle entirely
+
+*The toggle gates scheduled runs. Blocking a person who typed the command would be
+baffling.*
+
 ## Repository hygiene
 
 **TC-E-SAFE-14** — the published package contains no project-specific identifiers

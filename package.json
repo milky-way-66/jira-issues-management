@@ -31,7 +31,8 @@
     "trace:gaps": "node scripts/traceability.mjs --gaps",
     "check": "npm run typecheck && npm run boundaries && npm run test && npm run trace && npm run scan",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run check && npm run build"
+    "prepublishOnly": "npm run check && npm run build",
+    "test:live": "vitest run --dir test/live --exclude \"\""
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
