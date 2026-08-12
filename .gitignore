@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Secrets never belong in this repository — they live in the user's workspace
+.env
+.env.*
+*.pem
+
+.DS_Store
