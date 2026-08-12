@@ -3,7 +3,7 @@
  *
  * Skipped unless `MGMT_LIVE_JIRA_URL` and `MGMT_LIVE_JIRA_PAT` are set, so
  * `npm test` on a laptop or in CI never reaches a tracker. Point it at the
- * Docker instance from docs/local-jira.md:
+ * instance described in docs/local-jira.md:
  *
  *   MGMT_LIVE_JIRA_URL=http://localhost:8080 \
  *   MGMT_LIVE_JIRA_PAT=... \

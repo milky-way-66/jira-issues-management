@@ -13,7 +13,7 @@ every case here runs against a source server that rejects and records any reques
 that is not a GET.
 
 The source is a local mock (`test/support/fake-github.ts`). The tracker is either
-the in-process substitute (default) or a real Jira in Docker — see
+the in-process substitute (default) or a real Jira you control — see
 `docs/local-jira.md`. The same cases must pass against both; where they do not,
 the mapping is wrong, which is the whole reason for running them twice.
 

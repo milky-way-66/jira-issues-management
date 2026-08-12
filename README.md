@@ -98,7 +98,7 @@ The GitHub substitute additionally rejects and records anything that is not a GE
 the code that is itself under test.
 
 The one thing a substitute cannot answer is whether the field mapping matches a real
-instance. That is a deliberate manual check against a local Jira in Docker, kept out of
+instance. That is a deliberate manual check against a Jira you control, kept out of
 the test loop precisely because it needs an Atlassian licence to exist — see
 [`docs/local-jira.md`](docs/local-jira.md).
 

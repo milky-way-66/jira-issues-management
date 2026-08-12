@@ -4,7 +4,7 @@
  * One continuous scenario, external issue → mirror → ticket → tracker.
  *
  * The tracker is the in-process substitute by default. Set MGMT_LIVE_JIRA_URL
- * and MGMT_LIVE_JIRA_PAT and the *same cases* run against a real Jira in Docker
+ * and MGMT_LIVE_JIRA_PAT and the *same cases* run against a real Jira
  * (docs/local-jira.md) — that is the point of the switch: the assertions are
  * about behaviour, so a difference between the two runs is a mapping bug, and
  * running them separately would let one drift from the other.
