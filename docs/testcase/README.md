@@ -38,7 +38,50 @@ without inventing behaviour:
 If writing a case reveals that the documentation is ambiguous, **fix the documentation
 first**. That is the cheapest possible moment to discover a design flaw.
 
-## Traceability
+## Specification ↔ code linkage
+
+The link is **machine-checked**, so this document cannot quietly stop describing
+reality.
+
+```sh
+npm run trace              # report + enforce
+npm run trace -- --json    # machine-readable
+npm run trace -- --update  # accept the current numbers as the new floor
+```
+
+A test implements a case when **its name begins with the case id**:
+
+```ts
+it('TC-U-MERGE-02 remote changed only → pull', () => { … })
+```
+
+A trailing letter marks a variant of the same case — `TC-U-MERGE-08b` counts toward
+`TC-U-MERGE-08` — so an implementer can split a case into several tests without
+editing this specification.
+
+`npm run trace` runs as part of `npm run check` and **fails** on:
+
+| Failure | Why it matters |
+| --- | --- |
+| a test cites a case that is not declared here | the case was renamed or deleted, or the id is a typo — either way the coverage it appeared to provide was imaginary |
+| the same case id is declared twice | cross-references become ambiguous and the count is wrong |
+| the automated count drops below the recorded floor | a case silently lost its test |
+
+Gaps are **not** a failure: whole areas are unwritten until their phase arrives. They
+are reported as a number and a per-area bar so progress is visible:
+
+```
+  declared cases   140
+  automated        44  (31%)
+
+  U/MERGE   ████████████████████  17/17
+  I/JIRA    ····················  0/20
+```
+
+The floor lives in `.automated-baseline.json` and only moves up, on purpose: it is a
+ratchet, not a target.
+
+## Traceability by rule
 
 | Documented rule | Cases |
 | --- | --- |
