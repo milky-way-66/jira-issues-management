@@ -73,12 +73,16 @@ interface Candidate {
 
 // ── Planning ────────────────────────────────────────────────────────────────
 
-export async function plan(deps: SyncDeps, opts: SyncOptions = {}): Promise<{
+export interface PlannedSync {
   plan: SyncPlan
   candidates: Candidate[]
+  /** Remote tickets with no local file yet. Materialised, never merged. */
+  arrivals: RemoteTicket[]
   /** The furthest remote timestamp seen; the cursor advances to it on success. */
   highWater: Instant | null
-}> {
+}
+
+export async function plan(deps: SyncDeps, opts: SyncOptions = {}): Promise<PlannedSync> {
   const { repo, tracker } = deps
 
   const remotes = new Map<string, RemoteTicket>()
@@ -93,9 +97,11 @@ export async function plan(deps: SyncDeps, opts: SyncOptions = {}): Promise<{
   }
 
   const candidates: Candidate[] = []
+  const seen = new Set<string>()
   let withheld = 0
 
   for (const id of await repo.list()) {
+    seen.add(id)
     const ticket = await repo.load(id)
     if (!ticket) continue
 
@@ -120,10 +126,45 @@ export async function plan(deps: SyncDeps, opts: SyncOptions = {}): Promise<{
     candidates.push({ ticket, remote, base: base?.fields ?? null, plan: ticketPlan })
   }
 
+  // A remote ticket with no local file is an arrival, not a merge. There is no
+  // local side to reconcile, so running it through merge3 would report every
+  // field as a conflict against nothing.
+  const arrivals: RemoteTicket[] = []
+  for (const remote of remotes.values()) {
+    if (seen.has(remote.key)) continue
+    if (opts.limit !== undefined && candidates.length + arrivals.length >= opts.limit) {
+      withheld++
+      continue
+    }
+    arrivals.push(remote)
+  }
+
   return {
-    plan: { tickets: candidates.map((c) => c.plan), withheld },
+    plan: {
+      tickets: [
+        ...candidates.map((c) => c.plan),
+        ...arrivals.map((r) => arrivalPlan(r)),
+      ],
+      withheld,
+    },
     candidates,
+    arrivals,
     highWater,
+  }
+}
+
+/** An arrival's plan is a pull of every field, so the preview shows what lands. */
+function arrivalPlan(remote: RemoteTicket): TicketPlan {
+  return {
+    id: remote.key,
+    pull: [
+      { field: 'title', from: null, to: remote.fields.title },
+      { field: 'status', from: null, to: remote.fields.status },
+    ],
+    push: [],
+    conflicts: [],
+    baseUpdateOnly: false,
+    warnings: [],
   }
 }
 
@@ -160,13 +201,25 @@ function emptyPlan(id: string): TicketPlan {
  * Executes a previously computed plan. Takes the candidates from `plan()` so
  * that what runs is provably what was shown — nothing is recomputed here.
  */
-export async function execute(
-  deps: SyncDeps,
-  planned: Awaited<ReturnType<typeof plan>>,
-): Promise<SyncResult> {
+export async function execute(deps: SyncDeps, planned: PlannedSync): Promise<SyncResult> {
   const { repo, tracker, clock } = deps
   const failures: SyncResult['failures'] = []
   let allSucceeded = true
+
+  for (const remote of planned.arrivals) {
+    try {
+      await repo.save({
+        id: remote.key,
+        fields: remote.fields,
+        jira: { key: remote.key, url: '', updated: remote.updated },
+        sync: { base: remote.updated, lastPull: clock.now(), lastPush: null, conflict: false },
+      })
+      await repo.writeBase(remote.key, remote)
+    } catch (err) {
+      allSucceeded = false
+      failures.push({ id: remote.key, message: (err as Error).message })
+    }
+  }
 
   for (const candidate of planned.candidates) {
     const { ticket, remote, plan: p } = candidate
