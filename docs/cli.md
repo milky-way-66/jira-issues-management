@@ -15,6 +15,8 @@ mgmt new "title" [--type Sub-task] [--parent PROJ-123]     # creates LOCAL-nnnn
 mgmt resolve <id> --take local | --take jira | --done
 
 mgmt index                 # regenerate INDEX.md
+mgmt board                 # generate board.html — two Kanban views
+mgmt board --me bob --columns "To Do,In Progress,Done"
 mgmt status                # pending pushes, conflicts, cursor positions
 mgmt doctor                # tokens, server version, custom field ids, permissions
 
@@ -44,6 +46,54 @@ The mirror file stays in `issues/` afterwards looking unpromoted, which makes th
 attempt an easy mistake — and its cost is two tracker issues for one external issue,
 deleted by hand in a shared project. `--force` is there for the case where a second
 ticket is deliberate: split work, or a follow-up.
+
+## The board
+
+`mgmt board` writes a Kanban view of the workspace to `board.html`: **Project tasks**
+(everything) and **My tasks** (assigned to you), sharing one set of columns so the two
+line up when you switch between them. Open it from the workspace root — each card links
+to its own `tickets/<id>.md` and, once pushed, to the tracker.
+
+It reads the ticket files and nothing else, so it works on a plane and can never show
+something the files do not say. Like `mgmt index`, it needs no `--apply`: it generates a
+view and touches no ticket data.
+
+The file is self-contained — no stylesheet, script, font or image is fetched from
+anywhere. That is deliberate: the board holds a customer's ticket titles, and a
+subresource would announce every open of it to whoever serves that resource.
+
+### Columns
+
+Column *names* come from the tracker — they are the statuses in your ticket files. Their
+*order* does not, because a ticket records the status it is in and nothing about the
+workflow it belongs to. Recognised names (`To Do`, `In Progress`, `In Review`, `Done`
+and their usual synonyms) are ordered by how far along they are; anything unrecognised
+is placed between the active states and the done ones, in first-seen order.
+
+That last part is a guess. When it is wrong, say so explicitly:
+
+```sh
+mgmt board --columns "Chờ làm,Đang làm,Chờ duyệt,Xong"
+```
+
+Listed statuses come first, in that order, and are drawn even when empty — an empty
+`Done` column is the shape of the workflow, not noise.
+
+### Who "my tasks" belongs to
+
+In order: `MGMT_ME` from the environment or `.env`; then `.sync/identity.json`; then the
+tracker, asked once via `/myself` and cached. So the first run with a working token needs
+no setup, and every run after it is offline.
+
+A username in the tracker often differs from the local one, which is why it is asked
+rather than assumed. `--me <user>` overrides for one run — useful for looking at a
+colleague's board.
+
+If nobody can be resolved — no token, no cache, no override — the command still succeeds
+and the project board is complete. Not knowing who you are costs one view, not the board.
+
+Both `board.html` and `.sync/identity.json` are gitignored: the board is regenerated from
+the tickets, and the identity file names one person.
 
 ## Workspace discovery
 

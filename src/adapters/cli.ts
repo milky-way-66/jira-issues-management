@@ -20,6 +20,7 @@ import {
 import type { ClockPort } from '../core/ports.js'
 import type { Conflict, FieldChange, Instant, SyncPlan, Ticket } from '../core/ticket.js'
 import { isLabelsChange } from '../core/ticket.js'
+import { buildBoard } from '../core/use-cases/board.js'
 import { diagnose, type Check, type Diagnosis } from '../core/use-cases/diagnose.js'
 import {
   ResolveError,
@@ -35,7 +36,9 @@ import {
   plan,
   type SyncDeps,
 } from '../core/use-cases/sync-tickets.js'
+import { renderBoardHtml } from './board-html.js'
 import { GithubIssueSource } from './github.js'
+import { resolveMe, type Identity } from './identity.js'
 import { IssueMirror } from './issue-mirror.js'
 import { JiraTracker } from './jira.js'
 import { MarkdownTicketRepo } from './markdown-repo.js'
@@ -178,6 +181,16 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
     .command('index')
     .description('regenerate INDEX.md')
     .action(inWorkspace((ws) => cmdIndex(io, ws)))
+
+  program
+    .command('board')
+    .description('generate a Kanban board of project tasks and your own')
+    .option('--out <file>', 'where to write it, relative to the workspace root', 'board.html')
+    .option('--columns <list>', 'comma-separated status order, e.g. "To Do,In Progress,Done"')
+    .option('--me <user>', 'whose board "My tasks" is; overrides the cached identity')
+    .action(async (opts: { out: string; columns?: string; me?: string }) => {
+      code = await withWorkspace(io, global(), (ws) => cmdBoard(io, ws, opts, !!global()['json']))
+    })
 
   program
     .command('archive')
@@ -645,6 +658,78 @@ async function cmdIndex(io: Io, ws: Workspace): Promise<number> {
   await writeFile(join(ws.root, 'INDEX.md'), content, 'utf8')
 
   io.out(`INDEX.md regenerated — ${rows.length} ticket${rows.length === 1 ? '' : 's'}`)
+  return EXIT.ok
+}
+
+/**
+ * Writes the board file. Like `mgmt index`, this needs no `--apply`: it
+ * generates a view of the workspace and touches no ticket data, so there is
+ * nothing a dry run would protect.
+ */
+async function cmdBoard(
+  io: Io,
+  ws: Workspace,
+  opts: { out: string; columns?: string; me?: string },
+  json: boolean,
+): Promise<number> {
+  const store = new MarkdownTicketRepo(ws.root)
+  const tickets: Ticket[] = []
+  const unreadable: string[] = []
+
+  for (const id of await store.list()) {
+    try {
+      const ticket = await store.load(id)
+      if (ticket) tickets.push(ticket)
+    } catch {
+      // One malformed file must not cost you the other fourteen columns.
+      unreadable.push(id)
+    }
+  }
+
+  // The tracker is consulted only if nothing local answers the question, and a
+  // missing token is not an error here — it costs you "My tasks", not the board.
+  let tracker: JiraTracker | null = null
+  try {
+    if (ws.env['JIRA_PAT']) tracker = trackerFor(io, ws)
+  } catch {
+    tracker = null
+  }
+
+  const identity = opts.me
+    ? ({ name: opts.me, source: 'env' } as Identity)
+    : await resolveMe(ws.root, ws.env, tracker)
+
+  const board = buildBoard(tickets, {
+    me: identity?.name ?? null,
+    generated: systemClock.now(),
+    order: opts.columns?.split(',').map((s) => s.trim()).filter(Boolean) ?? [],
+    // `/browse/<key>` is Jira's own shape for this, and it is only ever used
+    // for tickets whose file records no URL of its own.
+    browseUrl: (key) => `${ws.config.jira.base_url.replace(/\/+$/, '')}/browse/${key}`,
+  })
+
+  if (json) {
+    io.out(JSON.stringify(board, null, 2))
+    return EXIT.ok
+  }
+
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  const { dirname, join, isAbsolute } = await import('node:path')
+  const out = isAbsolute(opts.out) ? opts.out : join(ws.root, opts.out)
+  // `--out docs/board.html` should not fail because `docs/` does not exist yet.
+  await mkdir(dirname(out), { recursive: true })
+  await writeFile(out, renderBoardHtml(board, { project: ws.config.jira.project }), 'utf8')
+
+  io.out(`${opts.out} — ${board.project.total} ticket${board.project.total === 1 ? '' : 's'} in ${board.columns.length} column${board.columns.length === 1 ? '' : 's'}`)
+
+  if (identity) io.out(`My tasks: ${board.mine.total} assigned to ${identity.name}`)
+  else
+    io.out(
+      'My tasks: empty — could not tell who you are. Set MGMT_ME in .env, or pass --me.',
+    )
+
+  for (const id of unreadable) io.err(`skipped ${id}: unreadable`)
+
   return EXIT.ok
 }
 

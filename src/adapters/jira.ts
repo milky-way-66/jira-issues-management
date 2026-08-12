@@ -12,7 +12,7 @@
  * file pins Server deliberately.
  */
 
-import type { TrackerPort } from '../core/ports.js'
+import type { IdentityPort, TrackerPort } from '../core/ports.js'
 import type {
   FieldChange,
   FieldSet,
@@ -45,7 +45,7 @@ export class JiraAuthError extends JiraError {}
 /** Overlap applied to the cursor to absorb clock skew between hosts. */
 export const SKEW_MS = 5 * 60 * 1000
 
-export class JiraTracker implements TrackerPort {
+export class JiraTracker implements TrackerPort, IdentityPort {
   private readonly fetch: FetchLike
   private readonly sleep: (ms: number) => Promise<void>
   private readonly pageSize: number
@@ -224,6 +224,18 @@ export class JiraTracker implements TrackerPort {
       version: info.version ?? 'unknown',
       deploymentType: info.deploymentType ?? 'unknown',
     }
+  }
+
+  /**
+   * The username the token belongs to.
+   *
+   * `name` is the Server/Data Center field; `key` is the fallback on instances
+   * that only expose that. Not `accountId` — this is not Jira Cloud, and an
+   * assignee in these files is a username.
+   */
+  async whoAmI(): Promise<string | null> {
+    const me = (await this.request('/rest/api/2/myself')) as { name?: string; key?: string }
+    return me.name ?? me.key ?? null
   }
 
   /** Finds the Epic Link custom field id so it never has to be guessed. */

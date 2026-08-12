@@ -7,6 +7,14 @@
 *.tmp
 .DS_Store
 
+# Generated views. Regenerated from the tickets by `mgmt board`, so committing
+# one adds a diff to every sync.
+board.html
+
+# Names one person, resolved from their own token. A shared value would give
+# every teammate the same "My tasks".
+.sync/identity.json
+
 # Note what is deliberately NOT ignored:
 #   .sync/base/   — the merge base. Committing it is what lets a three-way
 #                   merge work across machines and across a fresh clone.

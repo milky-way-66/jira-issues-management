@@ -33,6 +33,7 @@ mgmt sync --apply           # do it
 mgmt resolve <id> --take local | --take jira
 mgmt promote issues/<file>
 mgmt doctor                 # check credentials and instance settings
+mgmt board                  # regenerate board.html (project + personal Kanban)
 ```
 
 ## When a sync reports a conflict

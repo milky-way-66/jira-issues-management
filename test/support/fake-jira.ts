@@ -38,6 +38,8 @@ export interface FakeJiraOptions {
   transitions?: FakeTransition[]
   /** Token the server will accept. Anything else gets a 401. */
   token?: string
+  /** Username `/myself` reports for that token. */
+  me?: string
 }
 
 const DEFAULT_TRANSITIONS: FakeTransition[] = [
@@ -55,6 +57,7 @@ export class FakeJira {
   readonly project: string
   readonly epicLinkField: string
   readonly token: string
+  readonly me: string
   private readonly transitions: FakeTransition[]
 
   /** Every request received, for asserting that a run wrote nothing. */
@@ -64,6 +67,7 @@ export class FakeJira {
     this.project = opts.project ?? 'PROJ'
     this.epicLinkField = opts.epicLinkField ?? 'customfield_10014'
     this.token = opts.token ?? 'fake-token'
+    this.me = opts.me ?? 'alice'
     this.transitions = opts.transitions ?? DEFAULT_TRANSITIONS
   }
 
@@ -179,6 +183,10 @@ export class FakeJira {
 
     if (path === '/rest/api/2/serverInfo') {
       return { status: 200, body: { version: '9.12.0', deploymentType: 'Server' } }
+    }
+
+    if (path === '/rest/api/2/myself') {
+      return { status: 200, body: { name: this.me, key: this.me, displayName: this.me } }
     }
 
     if (path === '/rest/api/2/field') {

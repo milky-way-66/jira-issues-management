@@ -77,6 +77,16 @@ export interface TrackerHealthPort {
   discoverEpicLinkField(): Promise<string | null>
 }
 
+/**
+ * Who the credentials belong to. Its own port, not part of `TrackerHealthPort`:
+ * an instance that will not answer this is still perfectly syncable, and the
+ * answer is asked for at most once per workspace.
+ */
+export interface IdentityPort {
+  /** The tracker's username for the current token, or null if it will not say. */
+  whoAmI(): Promise<string | null>
+}
+
 /** Injected so tests can pin time and never sleep. */
 export interface ClockPort {
   now(): Instant
