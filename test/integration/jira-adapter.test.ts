@@ -258,6 +258,10 @@ describe('TC-I-JIRA — wiki markup', () => {
     expect(wikiToMarkdown('{{code}}')).toBe('`code`')
     expect(wikiToMarkdown('* item')).toBe('- item')
     expect(wikiToMarkdown('# item')).toBe('1. item')
+    // Wiki ordered items carry no number; the position has to be reconstructed.
+    expect(wikiToMarkdown('# one\n# two\n# three')).toBe('1. one\n2. two\n3. three')
+    // And a paragraph ends the list, so the next one starts at 1 again.
+    expect(wikiToMarkdown('# one\n# two\n\ntext\n\n# a')).toBe('1. one\n2. two\n\ntext\n\n1. a')
     expect(wikiToMarkdown('[label|https://example.com]')).toBe('[label](https://example.com)')
     expect(wikiToMarkdown('{code:ts}\nconst a = 1\n{code}')).toBe('```ts\nconst a = 1\n```')
   })
@@ -291,6 +295,26 @@ describe('TC-I-JIRA — wiki markup', () => {
 
   it.each(BODIES)('TC-I-JIRA-12b md round trip is stable: %j', (wiki) => {
     const md = wikiToMarkdown(wiki)
+    expect(wikiToMarkdown(markdownToWiki(md))).toBe(md)
+  })
+
+  /**
+   * The fixtures above all start from wiki, which cannot express a wrong
+   * number — every item is `#`. Local ticket bodies are Markdown, and Markdown
+   * can, so this direction is where renumbering bugs actually live. A real one
+   * hid here: `2. Sign in` came back as `1. Sign in`, which made every sync of
+   * any ticket with a numbered list raise a body conflict against itself.
+   */
+  const MD_BODIES = [
+    '1. first\n2. second\n3. third',
+    'Steps:\n\n1. Open the app\n2. Sign in\n\nDone.',
+    '1. one\n2. two\n\ntext\n\n1. a\n2. b',
+    '## Heading\n\n1. after a heading\n2. still counting',
+    '- a\n- b\n\n1. one\n2. two',
+    '1. list\n\n```ts\nconst a = 1\n```\n\n1. after code',
+  ]
+
+  it.each(MD_BODIES)('TC-I-JIRA-12c a Markdown body survives the round trip: %j', (md) => {
     expect(wikiToMarkdown(markdownToWiki(md))).toBe(md)
   })
 

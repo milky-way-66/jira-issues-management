@@ -9,7 +9,7 @@ mgmt sync --scheduled      # no-op unless sync.scheduled is on — for cron
 
 mgmt pull github [--full]  # --full reconciles deleted/transferred issues
 
-mgmt promote issues/<file> [--type Task] [--parent PROJ-100]
+mgmt promote issues/<file> [--type Task] [--parent PROJ-100] [--force]
 mgmt new "title" [--type Sub-task] [--parent PROJ-123]     # creates LOCAL-nnnn
 
 mgmt resolve <id> --take local | --take jira | --done
@@ -32,6 +32,18 @@ edits are not easily undone.
 
 `mgmt sync` prints the plan it would execute. `mgmt sync --apply` executes *that same
 plan object* — the preview and the action cannot diverge.
+
+## Promotion is one-way and once
+
+`mgmt promote` copies a mirrored external issue into a ticket you own. It never edits
+the mirror: those files are overwritten wholesale on the next pull, so an edit there
+would be lost, and the local copy of someone else's issue would stop matching theirs.
+
+Promoting the same issue twice is refused, naming the ticket that already points at it.
+The mirror file stays in `issues/` afterwards looking unpromoted, which makes the second
+attempt an easy mistake — and its cost is two tracker issues for one external issue,
+deleted by hand in a shared project. `--force` is there for the case where a second
+ticket is deliberate: split work, or a follow-up.
 
 ## Workspace discovery
 

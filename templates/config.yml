@@ -23,6 +23,10 @@ github:
   # access to it; the tool has no code path that writes to one.
   repos: []
 
+  # API root. Change it for GitHub Enterprise Server, or to point the tool at a
+  # local mock. Read-only applies whatever this points at.
+  base_url: "https://api.github.com"
+
 sync:
   # Closed tickets move to `archive/` after this many days. Nothing is deleted.
   archive_after_days: 30

@@ -16,6 +16,25 @@ damaging a shared production tracker, or leaking internal content to an external
 *The whole suite's protection against the day someone points a test run at a live
 instance.*
 
+**TC-E-SAFE-01c** — the same refusal protects the external source
+**Given** `NODE_ENV=test` and a source base URL that is not loopback
+**When** the source is constructed the way the CLI constructs it
+**Then** it throws before any network call.
+
+*The tracker is ours to damage; the source belongs to someone else. If only one of
+the two were guarded, it should have been this one. The rule lives in a single
+module so it cannot hold for one adapter and quietly lapse for the other.*
+
+**TC-E-SAFE-01d** — the guard is armed in the process that is running the tests
+**Then** the test-mode detection reports true,
+**And** every adapter that can open a socket refuses a public host as a consequence.
+
+*Rationale: both guards are conditional on "are we under test?". If that detection
+ever answers no — a runner that sets neither variable, a changed script — the
+protection does not fail loudly, it silently stops existing and the suite is free to
+reach the internet. This is the case that notices. A suite that needs an external
+service also fails for reasons unrelated to the code, and then stops being run.*
+
 **TC-E-SAFE-02** — the suite runs with no real credentials
 **Then** the test environment contains no tracker or source token, and every case still
 passes.

@@ -20,9 +20,21 @@ export function wikiToMarkdown(wiki: string): string {
   const out: string[] = []
   let inCode = false
 
+  /**
+   * Wiki ordered items carry no number — every one of them is `#`, and the
+   * position is implicit. Markdown's are explicit, so the number has to be
+   * reconstructed here, per indent level, resetting when the list ends.
+   *
+   * Emitting `1.` for every item instead would be a correctness bug rather than
+   * a cosmetic one: the body would differ from the file on the very next read,
+   * so every sync would see a change that nobody made, forever.
+   */
+  const ordinals = new Map<string, number>()
+
   for (const line of lines) {
     const codeOpen = line.match(/^\{code(?::([^}]*))?\}\s*$/)
     if (codeOpen) {
+      ordinals.clear() // a code block ends any list before it
       if (inCode) {
         out.push('```')
         inCode = false
@@ -46,10 +58,24 @@ export function wikiToMarkdown(wiki: string): string {
 
     const heading = s.match(H)
     if (heading) {
+      ordinals.clear()
       s = `${'#'.repeat(Number(heading[1]))} ${heading[2]}`
     } else {
-      s = s.replace(/^(\s*)#\s+/, '$11. ') // ordered list
-      s = s.replace(/^(\s*)\*\s+/, '$1- ') // unordered list
+      const ordered = s.match(/^(\s*)#\s+(.*)$/)
+      if (ordered) {
+        const indent = ordered[1] ?? ''
+        const n = (ordinals.get(indent) ?? 0) + 1
+        ordinals.set(indent, n)
+        // A deeper level restarting means the shallower one continues, but a
+        // shallower item ends every list nested under it.
+        for (const key of [...ordinals.keys()]) {
+          if (key.length > indent.length) ordinals.delete(key)
+        }
+        s = `${indent}${n}. ${ordered[2]}`
+      } else {
+        if (s.trim() !== '') ordinals.clear() // a paragraph ends the list
+        s = s.replace(/^(\s*)\*\s+/, '$1- ') // unordered list
+      }
     }
 
     s = inlineWikiToMd(s)

@@ -23,6 +23,7 @@ import type {
 } from '../core/ticket.js'
 import { isLabelsChange } from '../core/ticket.js'
 import { markdownToWiki, wikiToMarkdown } from './jira-wiki.js'
+import { nonLoopbackUnderTest } from './test-guard.js'
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -336,14 +337,6 @@ function formatJqlDate(d: Date): string {
  * happens once, at speed, on someone's laptop.
  */
 export function assertSafeHost(baseUrl: string): void {
-  if (process.env['NODE_ENV'] !== 'test' && process.env['VITEST'] === undefined) return
-
-  const host = new URL(baseUrl).hostname
-  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
-  if (!loopback) {
-    throw new JiraError(
-      `refusing to contact ${host} during tests; only loopback is permitted. ` +
-        `A test must never reach a real tracker.`,
-    )
-  }
+  const message = nonLoopbackUnderTest(baseUrl, 'tracker')
+  if (message) throw new JiraError(message)
 }

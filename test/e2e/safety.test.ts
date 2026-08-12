@@ -16,6 +16,7 @@ import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EXIT, run, type Io } from '../../src/adapters/cli.js'
 import { GithubIssueSource } from '../../src/adapters/github.js'
+import { nonLoopbackUnderTest, underTest } from '../../src/adapters/test-guard.js'
 import {
   FixedClock,
   InMemoryTicketRepo,
@@ -77,6 +78,46 @@ beforeEach(async () => {
 afterEach(async () => {
   await jira.stop()
   await rm(root, { recursive: true, force: true })
+})
+
+describe('TC-E-SAFE — nothing but loopback', () => {
+  it('TC-E-SAFE-01c the external source refuses a non-loopback host', () => {
+    // Constructed the way the CLI constructs it: no injected fetch, so this is
+    // the path that can actually open a socket to someone else's repository.
+    expect(
+      () => new GithubIssueSource({ repos: [{ owner: 'acme', repo: 'app' }] }),
+    ).toThrow(/only loopback/)
+
+    expect(
+      () =>
+        new GithubIssueSource({
+          repos: [{ owner: 'acme', repo: 'app' }],
+          baseUrl: 'https://api.example.test',
+        }),
+    ).toThrow(/only loopback/)
+
+    expect(
+      () =>
+        new GithubIssueSource({
+          repos: [{ owner: 'acme', repo: 'app' }],
+          baseUrl: 'http://127.0.0.1:9999',
+        }),
+    ).not.toThrow()
+  })
+
+  it('TC-E-SAFE-01d the guard is armed in this process', () => {
+    // Both guards are conditional on this answer. If it ever comes back false,
+    // nothing throws, nothing fails — the suite simply becomes free to reach
+    // the internet, and no other case would notice.
+    expect(underTest()).toBe(true)
+
+    expect(nonLoopbackUnderTest('https://jira.example.com', 'tracker')).toMatch(/only loopback/)
+    expect(nonLoopbackUnderTest('https://api.github.com', 'issue source')).toMatch(/only loopback/)
+    expect(nonLoopbackUnderTest('http://localhost:8080', 'tracker')).toBeNull()
+
+    // And the servers this suite actually talks to are bound to loopback.
+    expect(new URL(baseUrl).hostname).toBe('127.0.0.1')
+  })
 })
 
 describe('TC-E-SAFE — credentials', () => {

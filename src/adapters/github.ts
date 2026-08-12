@@ -16,6 +16,7 @@
 
 import type { IssueSourcePort } from '../core/ports.js'
 import type { ExternalIssue, Instant } from '../core/ticket.js'
+import { nonLoopbackUnderTest } from './test-guard.js'
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -54,6 +55,16 @@ export class GithubIssueSource implements IssueSourcePort {
 
   constructor(private readonly opts: GithubOptions) {
     this.fetch = opts.fetch ?? globalThis.fetch
+
+    // An injected fetch cannot reach the network unless its author made it, so
+    // the guard applies to the real one only — which is the path the CLI takes,
+    // and the only one where a misconfigured base URL becomes a request to
+    // somebody else's repository.
+    if (!opts.fetch) {
+      const message = nonLoopbackUnderTest(opts.baseUrl ?? DEFAULT_BASE, 'issue source')
+      if (message) throw new GithubError(message)
+    }
+
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
     this.now = opts.now ?? (() => Date.now())
     this.baseUrl = opts.baseUrl ?? DEFAULT_BASE

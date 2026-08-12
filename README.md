@@ -17,8 +17,8 @@ you actually work.
 
 **Alpha — feature-complete against its specification, not yet used in anger.**
 
-Every command in [`docs/cli.md`](docs/cli.md) is implemented, and all 153 specified
-test cases have automated coverage (235 tests). `npm run trace` enforces that number:
+Every command in [`docs/cli.md`](docs/cli.md) is implemented, and all 165 specified
+test cases have automated coverage (256 tests). `npm run trace` enforces that number:
 a spec case with no test, or a test citing a case that does not exist, fails the build.
 
 What that does *not* mean: it has not run against a production Jira for a sustained
@@ -83,22 +83,24 @@ Those two rules are enforced rather than merely stated, because the CLI is where
 safeguard lives: schema validation, dry-run, duplicate protection, `local-only`
 stripping. An agent reaching past it discards all of them at once, and silently.
 
-## Testing without a Jira instance
+## Tests reach nothing but loopback
 
-The suite runs against an in-process substitute that speaks the same REST subset over
-loopback — no licence, no container, no network. The adapter additionally refuses any
-non-loopback host while tests are running, with no opt-out.
+`npm test` contacts no external service. Both sides are in-process substitutes bound to
+`127.0.0.1` — a Jira speaking the same REST subset, and a GitHub serving mock issues.
+No licence, no container, no account, no network. Clone and run.
 
-For the mapping questions a substitute cannot answer, [`docs/local-jira.md`](docs/local-jira.md)
-covers running a real instance in Docker. Point the opt-in suite at it:
+That is enforced, not merely arranged: while tests are running, **both** adapters refuse
+any non-loopback host, and a case asserts that the refusal is armed in the process doing
+the asserting — otherwise the protection could stop existing without anything failing.
 
-```sh
-MGMT_LIVE_JIRA_URL=http://localhost:8080 MGMT_LIVE_JIRA_PAT=... npm run test:live
-```
+The GitHub substitute additionally rejects and records anything that is not a GET, so
+"this tool never writes to your repository" is checked at the wire rather than inside
+the code that is itself under test.
 
-Those checks assert *shapes*, never values this repository chose — a fixture invented
-from a specification encodes the guess, not the fact. They are excluded from `npm test`
-by configuration, not by remembering to skip them.
+The one thing a substitute cannot answer is whether the field mapping matches a real
+instance. That is a deliberate manual check against a local Jira in Docker, kept out of
+the test loop precisely because it needs an Atlassian licence to exist — see
+[`docs/local-jira.md`](docs/local-jira.md).
 
 ## Compatibility
 

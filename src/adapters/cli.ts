@@ -137,9 +137,15 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
     .option('--type <type>', 'issue type', 'Task')
     .option('--parent <key>', 'parent or epic key')
     .option('--apply', 'write the ticket instead of previewing it')
-    .action(async (file: string, opts: { type: string; parent?: string; apply?: boolean }) => {
-      code = await withWorkspace(io, global(), (ws) => cmdPromote(io, ws, file, opts))
-    })
+    .option('--force', 'promote again even if a ticket already points at this issue')
+    .action(
+      async (
+        file: string,
+        opts: { type: string; parent?: string; apply?: boolean; force?: boolean },
+      ) => {
+        code = await withWorkspace(io, global(), (ws) => cmdPromote(io, ws, file, opts))
+      },
+    )
 
   program
     .command('new')
@@ -363,7 +369,11 @@ async function cmdPull(
 
   const store = new MarkdownTicketRepo(ws.root)
   const mirror = new IssueMirror(ws.root)
-  const source = new GithubIssueSource({ repos, token: io.env['GITHUB_TOKEN'] })
+  const source = new GithubIssueSource({
+    repos,
+    token: io.env['GITHUB_TOKEN'],
+    ...(ws.config.github?.base_url ? { baseUrl: ws.config.github.base_url } : {}),
+  })
 
   const cursor = opts.full ? null : await store.getCursor(GITHUB_CURSOR)
   const stream = opts.full ? source.fetchAll() : source.fetchUpdatedSince(cursor)
@@ -390,7 +400,7 @@ async function cmdPromote(
   io: Io,
   ws: Workspace,
   file: string,
-  opts: { type: string; parent?: string; apply?: boolean },
+  opts: { type: string; parent?: string; apply?: boolean; force?: boolean },
 ): Promise<number> {
   const mirror = new IssueMirror(ws.root)
   const issue = await mirror.read(file)
@@ -401,6 +411,21 @@ async function cmdPromote(
   }
 
   const store = new MarkdownTicketRepo(ws.root)
+
+  // Promoting twice is an easy mistake — the mirror file is still sitting there
+  // afterwards, looking unpromoted. Left unchecked it produces two tickets for
+  // one external issue, and then two tracker issues, which a person has to
+  // delete by hand in a shared project. `--force` exists because a deliberate
+  // second ticket (split work, a follow-up) is legitimate.
+  const existing = await findPromoted(store, issue.owner, issue.repo, issue.number)
+  if (existing && !opts.force) {
+    io.err(
+      `${issue.owner}/${issue.repo}#${issue.number} is already promoted as ${existing}. ` +
+        `Edit tickets/${existing}.md, or pass --force to create a second ticket for it.`,
+    )
+    return EXIT.error
+  }
+
   const localId = nextLocalId(await store.highestLocalId())
 
   const draft = draftFromExternalIssue(issue, localId, {
@@ -433,6 +458,21 @@ async function cmdPromote(
   io.out(`created ${localId} from ${issue.owner}/${issue.repo}#${issue.number}`)
   io.out('It reaches the tracker on the next `mgmt sync --apply`.')
   return EXIT.ok
+}
+
+/** The id of the ticket already pointing at this external issue, if any. */
+async function findPromoted(
+  store: MarkdownTicketRepo,
+  owner: string,
+  repo: string,
+  number: number,
+): Promise<string | null> {
+  const slug = `${owner}/${repo}`
+  for (const id of await store.list()) {
+    const ticket = await store.load(id)
+    if (ticket?.github?.repo === slug && ticket.github.number === number) return id
+  }
+  return null
 }
 
 async function cmdNew(

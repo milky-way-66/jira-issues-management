@@ -30,8 +30,16 @@ const ConfigSchema = z.object({
     epic_link_field: z.string().nullable().default(null),
   }),
   github: z
-    .object({ repos: z.array(z.string()).default([]) })
-    .default({ repos: [] }),
+    .object({
+      repos: z.array(z.string()).default([]),
+      /**
+       * API root. Present so the source can be pointed at GitHub Enterprise
+       * Server, and so an end-to-end run can be driven against a local mock
+       * instead of reaching the real github.com from a test.
+       */
+      base_url: z.string().url().default('https://api.github.com'),
+    })
+    .default({ repos: [], base_url: 'https://api.github.com' }),
   sync: z
     .object({
       archive_after_days: z.number().int().positive().default(90),
