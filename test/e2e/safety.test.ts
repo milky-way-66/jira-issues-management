@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EXIT, run, type Io } from '../../src/adapters/cli.js'
+import { CLI_VERSION } from '../../src/adapters/workspace.js'
 import { GithubIssueSource } from '../../src/adapters/github.js'
 import { nonLoopbackUnderTest, underTest } from '../../src/adapters/test-guard.js'
 import {
@@ -407,6 +408,27 @@ describe('TC-E-SAFE — repository hygiene', () => {
       ).toBe(true)
     }
   })
+
+  it('TC-E-SAFE-15f the reported version matches the published one', async () => {
+    // These drifted once: 0.1.1 was published reporting itself as 0.1.0. That
+    // number is what `cli_range` compares against, in a gate with no bypass
+    // flag — so a workspace pinning ">=0.1.1" would refuse a CLI that was
+    // genuinely 0.1.1, and say so using a version the user can see installed.
+    const manifest = JSON.parse(
+      await readFile(join(packageRoot, 'package.json'), 'utf8'),
+    ) as { version: string }
+
+    expect(
+      CLI_VERSION,
+      `CLI_VERSION is ${CLI_VERSION} but package.json says ${manifest.version}. ` +
+        `Run \`node scripts/sync-version.mjs\`.`,
+    ).toBe(manifest.version)
+
+    // And what the built binary actually prints, which is what a user sees.
+    await exec('npm', ['run', 'build'], { cwd: packageRoot })
+    const { stdout } = await exec('node', [join(packageRoot, 'dist/main.js'), '--version'])
+    expect(stdout.trim()).toBe(manifest.version)
+  }, 60_000)
 
   it('TC-E-SAFE-15b templates ship with the package, or init cannot work', async () => {
     // A global install with no templates/ fails at `mgmt init`, which is the

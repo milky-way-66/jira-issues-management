@@ -30,6 +30,7 @@
     "trace": "node scripts/traceability.mjs",
     "trace:gaps": "node scripts/traceability.mjs --gaps",
     "check": "npm run typecheck && npm run boundaries && npm run test && npm run trace && npm run scan",
+    "version": "node scripts/sync-version.mjs && git add src/adapters/workspace.ts",
     "prepare": "npm run build",
     "prepublishOnly": "npm run check && npm run build",
     "test:live": "vitest run --config vitest.live.config.ts"

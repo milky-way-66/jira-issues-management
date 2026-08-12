@@ -139,3 +139,11 @@ on its first import. Every other case passed, because a working copy has
 *The other half of the same failure: two packages were resolving from a stray
 `node_modules` in a parent directory. The suite was green against packages the
 repository had never declared, and a clean clone would not have run at all.*
+
+**TC-E-SAFE-15f** — the reported version matches the published one
+**Then** `CLI_VERSION`, `package.json`, and what the built binary prints all agree.
+
+*These drifted once: 0.1.1 was published reporting itself as 0.1.0. That number is
+what `cli_range` compares against, in a gate with no bypass flag — so a workspace
+pinning `>=0.1.1` would refuse a CLI that was genuinely 0.1.1, naming a version the
+user can plainly see is installed.*
