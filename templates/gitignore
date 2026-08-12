@@ -1,0 +1,13 @@
+# Secrets. Never commit this file — it holds the tracker token.
+.env
+.env.*
+!.env.example
+
+# Local scratch
+*.tmp
+.DS_Store
+
+# Note what is deliberately NOT ignored:
+#   .sync/base/   — the merge base. Committing it is what lets a three-way
+#                   merge work across machines and across a fresh clone.
+#   .sync/state.json — sync cursors.

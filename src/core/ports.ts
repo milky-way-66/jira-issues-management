@@ -66,6 +66,17 @@ export interface TicketRepoPort {
   highestLocalId(): Promise<number>
 }
 
+/**
+ * What `mgmt doctor` needs to ask the tracker. Kept apart from `TrackerPort`
+ * because sync must not depend on it: an instance can be perfectly syncable
+ * while refusing to expose its field catalogue.
+ */
+export interface TrackerHealthPort {
+  serverInfo(): Promise<{ version: string; deploymentType: string }>
+  /** Resolves the Epic Link custom field id, or null if the instance has none. */
+  discoverEpicLinkField(): Promise<string | null>
+}
+
 /** Injected so tests can pin time and never sleep. */
 export interface ClockPort {
   now(): Instant

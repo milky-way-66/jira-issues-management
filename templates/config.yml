@@ -1,0 +1,28 @@
+# Workspace configuration.
+#
+# This file marks the workspace root — commands find it by walking up from the
+# current directory, the way git finds `.git`.
+#
+# It holds no secrets. Tokens live in `.env`, which is gitignored.
+
+mgmt:
+  schema_version: 1
+  # Which CLI versions may operate on this workspace. A scheduled run should
+  # pin an exact version; a CLI that upgrades itself overnight and breaks is
+  # the worst failure mode available.
+  cli_range: ">=0.1.0 <0.2.0"
+
+jira:
+  base_url: "https://jira.example.com"
+  project: "PROJ"
+  # Discovered by `mgmt doctor` — instance-specific, never guess it.
+  epic_link_field: null
+
+github:
+  # Issue sources are read-only. Listing a repository here never grants write
+  # access to it; the tool has no code path that writes to one.
+  repos: []
+
+sync:
+  # Closed tickets move to `archive/` after this many days. Nothing is deleted.
+  archive_after_days: 30
