@@ -145,12 +145,42 @@ read-only ones, with no flag to skip. Multiple machines plus a cron job guarante
 an outdated CLI will eventually meet newer data, and an outdated CLI misreading
 `.sync/base/` corrupts real remote tickets rather than merely displaying something odd.
 
+### Keeping the customer out of a committed file
+
+Any value in `config.yml` may be written as `${VAR}` and supplied from `.env`:
+
+```yaml
+jira:
+  base_url: "${JIRA_BASE_URL}"
+  project: "${JIRA_PROJECT}"
+```
+
+A hostname and a project key are not secrets, but they are the parts of this file
+that identify a customer — and this file is committed. Referencing them keeps the
+committed file free of anything identifying, which for a shared or public repository
+is the difference between being able to commit it and not.
+
+An undefined variable **fails loudly, naming it**. Substituting an empty string would
+produce `base_url: ""`, and the failure would surface later as a URL parse error a long
+way from its cause.
+
 ## `.env`
 
 ```
-JIRA_BASE_URL=https://jira.example.com
 JIRA_PAT=…                   # Jira Server 8.14+ personal access token (Bearer auth)
 GITHUB_TOKEN=…               # read-only scope is sufficient
+
+JIRA_BASE_URL=https://jira.example.com    # optional, if config.yml references it
+JIRA_PROJECT=PROJ                          # optional, likewise
 ```
 
-Never committed. The tool reads it from the workspace root only.
+Never committed. The tool reads it from the workspace root only, and reads it *before*
+parsing `config.yml`, so a value defined here is available to a `${VAR}` reference in
+the same run.
+
+Anything already exported in your shell wins over the file — that is how CI injects a
+token, and how a one-off override works. Loading never mutates the process environment:
+the values reach the command that needs them and nothing else.
+
+`KEY=value` per line; `#` comments and blank lines ignored; quotes stripped, which is
+how a value keeps a `#` or a trailing space; a pasted `export KEY=value` is accepted.

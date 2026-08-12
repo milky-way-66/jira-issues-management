@@ -8,6 +8,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import { loadEnv } from './env-file.js'
 import { z } from 'zod'
 
 export const WORKSPACE_FILE = 'config.yml'
@@ -60,6 +61,8 @@ export type Config = z.infer<typeof ConfigSchema>
 export interface Workspace {
   root: string
   config: Config
+  /** The workspace's `.env` overlaid on the real environment. */
+  env: NodeJS.ProcessEnv
 }
 
 export class WorkspaceError extends Error {}
@@ -106,12 +109,51 @@ async function hasConfig(dir: string): Promise<boolean> {
   }
 }
 
-export async function loadConfig(root: string): Promise<Config> {
+/**
+ * Substitutes `${VAR}` from the environment.
+ *
+ * The point is that `config.yml` is committed and `.env` is not. A hostname or
+ * a project key is not a secret, but it is the one part of this file that
+ * identifies a customer — so being able to keep it out of a repository, without
+ * keeping the whole file out, is worth the small amount of machinery.
+ *
+ * An undefined variable is an error rather than an empty string. Silently
+ * substituting nothing would produce `base_url: ""`, and the failure would
+ * surface later as a confusing URL parse error far from its cause.
+ */
+export function interpolate(text: string, env: NodeJS.ProcessEnv): string {
+  const missing: string[] = []
+
+  const out = text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => {
+    const value = env[name]
+    if (value === undefined || value === '') {
+      missing.push(name)
+      return ''
+    }
+    return value
+  })
+
+  if (missing.length > 0) {
+    const names = [...new Set(missing)]
+    throw new WorkspaceError(
+      `${WORKSPACE_FILE} refers to ${names.join(', ')}, which ${names.length === 1 ? 'is' : 'are'} not set.\n` +
+        `Set ${names.length === 1 ? 'it' : 'them'} in ${'.env'} at the workspace root, or in the environment.`,
+    )
+  }
+
+  return out
+}
+
+export async function loadConfig(
+  root: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Config> {
   const path = join(root, WORKSPACE_FILE)
   let raw: unknown
   try {
-    raw = parseYaml(await readFile(path, 'utf8'))
+    raw = parseYaml(interpolate(await readFile(path, 'utf8'), env))
   } catch (err) {
+    if (err instanceof WorkspaceError) throw err
     throw new WorkspaceError(`cannot read ${path}: ${(err as Error).message}`)
   }
 
@@ -234,13 +276,19 @@ export async function migrate(root: string): Promise<{ from: number; to: number 
 
 export async function openWorkspace(
   cwd: string,
-  opts: { explicit?: string | undefined } = {},
+  opts: { explicit?: string | undefined; env?: NodeJS.ProcessEnv } = {},
 ): Promise<Workspace> {
+  const base = opts.env ?? process.env
   const root = await findWorkspaceRoot(cwd, {
     explicit: opts.explicit,
-    env: process.env['MGMT_WORKSPACE'],
+    env: base['MGMT_WORKSPACE'],
   })
-  const config = await loadConfig(root)
+
+  // The workspace has to be located before its `.env` can be read, and the
+  // config has to be read after — `${VAR}` in config.yml is the reason the file
+  // exists for most workspaces.
+  const env = await loadEnv(root, base)
+  const config = await loadConfig(root, env)
   assertCompatible(config)
-  return { root, config }
+  return { root, config, env }
 }

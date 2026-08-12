@@ -227,9 +227,15 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
 
 // ── composition ─────────────────────────────────────────────────────────────
 
-function trackerFor(io: Io, ws: Workspace): JiraTracker {
-  const token = io.env['JIRA_PAT']
-  if (!token) throw new WorkspaceError('JIRA_PAT is not set. See .env.example.')
+function trackerFor(_io: Io, ws: Workspace): JiraTracker {
+  // ws.env, not io.env: the token normally lives in the workspace's `.env`,
+  // which only the workspace knows where to find.
+  const token = ws.env['JIRA_PAT']
+  if (!token) {
+    throw new WorkspaceError(
+      'JIRA_PAT is not set. Copy .env.example to .env at the workspace root and add it.',
+    )
+  }
 
   return new JiraTracker({
     baseUrl: ws.config.jira.base_url,
@@ -277,7 +283,7 @@ async function cmdMigrate(io: Io, from: string): Promise<number> {
 }
 
 async function cmdDoctor(io: Io, ws: Workspace, json: boolean): Promise<number> {
-  const token = io.env['JIRA_PAT']
+  const token = ws.env['JIRA_PAT']
 
   const diagnosis = await diagnose({
     repo: new MarkdownTicketRepo(ws.root),
@@ -371,7 +377,7 @@ async function cmdPull(
   const mirror = new IssueMirror(ws.root)
   const source = new GithubIssueSource({
     repos,
-    token: io.env['GITHUB_TOKEN'],
+    token: ws.env['GITHUB_TOKEN'],
     ...(ws.config.github?.base_url ? { baseUrl: ws.config.github.base_url } : {}),
   })
 
@@ -774,7 +780,14 @@ async function withWorkspace(
   fn: (ws: Workspace) => Promise<number>,
 ): Promise<number> {
   try {
-    const ws = await openWorkspace(io.cwd, { explicit: opts['workspace'] as string | undefined })
+    const ws = await openWorkspace(io.cwd, {
+      explicit: opts['workspace'] as string | undefined,
+      env: io.env,
+    })
+
+    // Every command from here on reads the workspace's `.env` as well as the
+    // real environment. Rebinding io rather than mutating process.env keeps the
+    // environment an argument, which is what makes commands drivable in-process.
     return await fn(ws)
   } catch (err) {
     if (err instanceof VersionError) {

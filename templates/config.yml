@@ -13,6 +13,12 @@ mgmt:
   cli_range: ">=0.1.0 <0.2.0"
 
 jira:
+  # Any value here may be written as `${VAR}` and supplied from `.env` instead.
+  # A hostname and a project key are not secrets, but they are the parts of this
+  # file that identify a customer — and this file is committed. See .env.example.
+  #
+  #   base_url: "${JIRA_BASE_URL}"
+  #   project: "${JIRA_PROJECT}"
   base_url: "https://jira.example.com"
   project: "PROJ"
   # Discovered by `mgmt doctor` — instance-specific, never guess it.
