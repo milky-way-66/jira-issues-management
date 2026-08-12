@@ -10,7 +10,7 @@ mgmt:
   # Which CLI versions may operate on this workspace. A scheduled run should
   # pin an exact version; a CLI that upgrades itself overnight and breaks is
   # the worst failure mode available.
-  cli_range: ">=0.1.0 <0.2.0"
+  cli_range: ">=0.2.0 <0.3.0"
 
 jira:
   # Any value here may be written as `${VAR}` and supplied from `.env` instead.

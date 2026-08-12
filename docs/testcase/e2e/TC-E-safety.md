@@ -147,3 +147,12 @@ repository had never declared, and a clean clone would not have run at all.*
 what `cli_range` compares against, in a gate with no bypass flag — so a workspace
 pinning `>=0.1.1` would refuse a CLI that was genuinely 0.1.1, naming a version the
 user can plainly see is installed.*
+
+**TC-E-SAFE-15g** — a scaffolded workspace admits the CLI that scaffolded it
+**When** `mgmt init` runs and then any command
+**Then** the exit code is not 3.
+
+*The template pins `cli_range`, and a version bump can leave it behind — so `mgmt
+init` would produce a workspace the very next command refuses, in a gate with no
+bypass flag. That is the worst possible first run, and it is one forgotten line away
+at every minor release.*

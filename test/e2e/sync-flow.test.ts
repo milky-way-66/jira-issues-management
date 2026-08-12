@@ -65,7 +65,7 @@ async function writeConfig(): Promise<void> {
     [
       'mgmt:',
       '  schema_version: 1',
-      '  cli_range: ">=0.1.0 <0.2.0"',
+      '  cli_range: ">=0.1.0 <1.0.0"',
       'jira:',
       `  base_url: "${baseUrl}"`,
       '  project: "PROJ"',

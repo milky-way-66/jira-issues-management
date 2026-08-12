@@ -57,7 +57,7 @@ async function writeConfig(schemaVersion = 1): Promise<void> {
       '# A comment that must survive migration.',
       'mgmt:',
       `  schema_version: ${schemaVersion}`,
-      '  cli_range: ">=0.1.0 <0.2.0"',
+      '  cli_range: ">=0.1.0 <1.0.0"',
       'jira:',
       `  base_url: "${baseUrl}"`,
       '  project: "PROJ"',
@@ -174,7 +174,7 @@ describe('TC-E-SAFE — schema migration', () => {
     expect(config).toContain('schema_version: 1')
     // A migration has to be reviewable as a diff, so nothing else may move.
     expect(config).toContain('# A comment that must survive migration.')
-    expect(config).toContain('cli_range: ">=0.1.0 <0.2.0"')
+    expect(config).toContain('cli_range: ">=0.1.0 <1.0.0"')
 
     expect([EXIT.ok, EXIT.conflicts]).toContain(await run(['status'], io()))
   })
@@ -429,6 +429,28 @@ describe('TC-E-SAFE — repository hygiene', () => {
     const { stdout } = await exec('node', [join(packageRoot, 'dist/main.js'), '--version'])
     expect(stdout.trim()).toBe(manifest.version)
   }, 60_000)
+
+  it('TC-E-SAFE-15g a scaffolded workspace admits the CLI that scaffolded it', async () => {
+    // The template pins cli_range, and a version bump can leave it behind — so
+    // `mgmt init` would produce a workspace that the very next command refuses
+    // with exit 3, in a gate with no bypass flag. That is the worst possible
+    // first run, and it is one forgotten line away at every minor release.
+    const fresh = await mkdtemp(join(tmpdir(), 'mgmt-scaffold-'))
+    try {
+      const o = io({ cwd: fresh })
+      expect(await run(['init'], o)).toBe(EXIT.ok)
+
+      const status = io({ cwd: fresh })
+      const code = await run(['status'], status)
+
+      expect(
+        code,
+        `a freshly scaffolded workspace rejected CLI ${CLI_VERSION}: ${status.stderr.join('\n')}`,
+      ).not.toBe(EXIT.incompatible)
+    } finally {
+      await rm(fresh, { recursive: true, force: true })
+    }
+  })
 
   it('TC-E-SAFE-15b templates ship with the package, or init cannot work', async () => {
     // A global install with no templates/ fails at `mgmt init`, which is the
