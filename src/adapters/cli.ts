@@ -22,6 +22,7 @@ import type { Conflict, FieldChange, Instant, SyncPlan, Ticket } from '../core/t
 import { isLabelsChange } from '../core/ticket.js'
 import { buildBoard } from '../core/use-cases/board.js'
 import { diagnose, type Check, type Diagnosis } from '../core/use-cases/diagnose.js'
+import { moveTicket, type MoveDeps } from '../core/use-cases/move.js'
 import {
   ResolveError,
   conflictsFor,
@@ -37,6 +38,7 @@ import {
   type SyncDeps,
 } from '../core/use-cases/sync-tickets.js'
 import { renderBoardHtml } from './board-html.js'
+import { newNonce, startBoardServer } from './board-server.js'
 import { GithubIssueSource } from './github.js'
 import { resolveMe, type Identity } from './identity.js'
 import { IssueMirror } from './issue-mirror.js'
@@ -188,8 +190,30 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
     .option('--out <file>', 'where to write it, relative to the workspace root', 'board.html')
     .option('--columns <list>', 'comma-separated status order, e.g. "To Do,In Progress,Done"')
     .option('--me <user>', 'whose board "My tasks" is; overrides the cached identity')
-    .action(async (opts: { out: string; columns?: string; me?: string }) => {
-      code = await withWorkspace(io, global(), (ws) => cmdBoard(io, ws, opts, !!global()['json']))
+    .option('--serve', 'serve the board on loopback so cards can be dragged')
+    .option('--port <n>', 'port for --serve; 0 picks a free one', Number)
+    .option('--apply', 'with --serve, let a drag move a ticket in the tracker')
+    .action(
+      async (opts: {
+        out: string
+        columns?: string
+        me?: string
+        serve?: boolean
+        port?: number
+        apply?: boolean
+      }) => {
+        code = await withWorkspace(io, global(), (ws) => cmdBoard(io, ws, opts, !!global()['json']))
+      },
+    )
+
+  program
+    .command('move')
+    .argument('<id>')
+    .argument('<status>', 'the status to move it to')
+    .description('transition a ticket in the tracker (dry run unless --apply)')
+    .option('--apply', 'perform the transition instead of previewing it')
+    .action(async (id: string, status: string, opts: { apply?: boolean }) => {
+      code = await withWorkspace(io, global(), (ws) => cmdMove(io, ws, id, status, opts))
     })
 
   program
@@ -669,22 +693,10 @@ async function cmdIndex(io: Io, ws: Workspace): Promise<number> {
 async function cmdBoard(
   io: Io,
   ws: Workspace,
-  opts: { out: string; columns?: string; me?: string },
+  opts: { out: string; columns?: string; me?: string; serve?: boolean; port?: number; apply?: boolean },
   json: boolean,
 ): Promise<number> {
   const store = new MarkdownTicketRepo(ws.root)
-  const tickets: Ticket[] = []
-  const unreadable: string[] = []
-
-  for (const id of await store.list()) {
-    try {
-      const ticket = await store.load(id)
-      if (ticket) tickets.push(ticket)
-    } catch {
-      // One malformed file must not cost you the other fourteen columns.
-      unreadable.push(id)
-    }
-  }
 
   // The tracker is consulted only if nothing local answers the question, and a
   // missing token is not an error here — it costs you "My tasks", not the board.
@@ -699,19 +711,42 @@ async function cmdBoard(
     ? ({ name: opts.me, source: 'env' } as Identity)
     : await resolveMe(ws.root, ws.env, tracker)
 
-  const board = buildBoard(tickets, {
-    me: identity?.name ?? null,
-    generated: systemClock.now(),
-    order: opts.columns?.split(',').map((s) => s.trim()).filter(Boolean) ?? [],
-    // `/browse/<key>` is Jira's own shape for this, and it is only ever used
-    // for tickets whose file records no URL of its own.
-    browseUrl: (key) => `${ws.config.jira.base_url.replace(/\/+$/, '')}/browse/${key}`,
-  })
+  const unreadable: string[] = []
+
+  // Re-read on every call rather than once: a served board must reflect the
+  // files as they are now, not as they were when the server started.
+  const currentBoard = async () => {
+    const tickets: Ticket[] = []
+    unreadable.length = 0
+
+    for (const id of await store.list()) {
+      try {
+        const ticket = await store.load(id)
+        if (ticket) tickets.push(ticket)
+      } catch {
+        // One malformed file must not cost you the other fourteen columns.
+        unreadable.push(id)
+      }
+    }
+
+    return buildBoard(tickets, {
+      me: identity?.name ?? null,
+      generated: systemClock.now(),
+      order: opts.columns?.split(',').map((s) => s.trim()).filter(Boolean) ?? [],
+      // `/browse/<key>` is Jira's own shape for this, and it is only ever used
+      // for tickets whose file records no URL of its own.
+      browseUrl: (key) => `${ws.config.jira.base_url.replace(/\/+$/, '')}/browse/${key}`,
+    })
+  }
+
+  const board = await currentBoard()
 
   if (json) {
     io.out(JSON.stringify(board, null, 2))
     return EXIT.ok
   }
+
+  if (opts.serve) return serveBoard(io, ws, store, tracker, currentBoard, opts)
 
   const { mkdir, writeFile } = await import('node:fs/promises')
   const { dirname, join, isAbsolute } = await import('node:path')
@@ -731,6 +766,105 @@ async function cmdBoard(
   for (const id of unreadable) io.err(`skipped ${id}: unreadable`)
 
   return EXIT.ok
+}
+
+/**
+ * Serves the board until interrupted.
+ *
+ * A drag has to reach Jira, and only this process holds the token — a board
+ * opened as a file has no way to move anything, and giving it one would mean
+ * writing a token into the workspace.
+ */
+async function serveBoard(
+  io: Io,
+  ws: Workspace,
+  store: MarkdownTicketRepo,
+  tracker: JiraTracker | null,
+  currentBoard: () => Promise<ReturnType<typeof buildBoard>>,
+  opts: { port?: number; apply?: boolean },
+): Promise<number> {
+  // Fail before the browser opens, not at the end of the first drag.
+  if (opts.apply && !tracker) {
+    io.err(
+      'JIRA_PAT is not set, so no drag could reach the tracker. Drop --apply to serve a read-only board.',
+    )
+    return EXIT.error
+  }
+
+  const nonce = newNonce()
+  const deps: MoveDeps = { repo: store, tracker: tracker!, clock: systemClock }
+
+  const server = await startBoardServer({
+    port: opts.port ?? 0,
+    apply: !!opts.apply,
+    nonce,
+    log: (line) => io.out(line),
+    render: async () =>
+      renderBoardHtml(await currentBoard(), {
+        project: ws.config.jira.project,
+        live: { nonce, apply: !!opts.apply },
+      }),
+    move: (id, to) => moveTicket(deps, id, to, { apply: true }),
+  })
+
+  io.out(`Board on ${server.url}`)
+  io.out(
+    opts.apply
+      ? 'Drag a card to move a ticket. Every move goes straight to the tracker.'
+      : 'Read-only. Restart with --apply to let a drag move a ticket.',
+  )
+  io.out('Ctrl-C to stop.')
+
+  await new Promise<void>((resolve) => {
+    const stop = () => {
+      io.out('')
+      resolve()
+    }
+    process.once('SIGINT', stop)
+    process.once('SIGTERM', stop)
+  })
+
+  await server.close()
+  return EXIT.ok
+}
+
+async function cmdMove(
+  io: Io,
+  ws: Workspace,
+  id: string,
+  status: string,
+  opts: { apply?: boolean },
+): Promise<number> {
+  const deps: MoveDeps = {
+    repo: new MarkdownTicketRepo(ws.root),
+    tracker: trackerFor(io, ws),
+    clock: systemClock,
+  }
+
+  try {
+    const result = await moveTicket(deps, id, status, { apply: !!opts.apply })
+
+    if (result.unchanged) {
+      io.out(`${id} is already ${result.to}; nothing to do.`)
+      return EXIT.ok
+    }
+
+    if (!result.applied) {
+      io.out(`would move ${id}  ${result.from} → ${result.to}`)
+      io.out('Re-run with --apply to perform it.')
+      return EXIT.ok
+    }
+
+    io.out(`${id}  ${result.from} → ${result.to}`)
+    // The workflow, not the tool, decides where a transition lands.
+    if (result.to.toLowerCase() !== result.requested.toLowerCase()) {
+      io.out(`(the workflow landed it in ${result.to}, not ${result.requested})`)
+    }
+    return EXIT.ok
+  } catch (err) {
+    io.err((err as Error).message)
+    return EXIT.error
+  }
 }
 
 async function cmdArchive(io: Io, ws: Workspace, opts: { apply?: boolean }): Promise<number> {

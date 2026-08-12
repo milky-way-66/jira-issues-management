@@ -34,6 +34,8 @@ mgmt resolve <id> --take local | --take jira
 mgmt promote issues/<file>
 mgmt doctor                 # check credentials and instance settings
 mgmt board                  # regenerate board.html (project + personal Kanban)
+mgmt board --serve --apply  # serve it and let a drag transition a ticket
+mgmt move <id> <status>     # transition a ticket (dry run without --apply)
 ```
 
 ## When a sync reports a conflict

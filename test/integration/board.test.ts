@@ -118,6 +118,58 @@ describe('rendering', () => {
   })
 })
 
+describe('links and drag state', () => {
+  const linked = ticket('PROJ-1', {}, {
+    jira: { key: 'PROJ-1', url: 'https://jira.example.com/browse/PROJ-1', updated: AT },
+  })
+
+  it('TC-I-BOARD-15 points the title at the tracker, keeping the file one click away', () => {
+    const out = html([linked])
+
+    expect(out).toContain(
+      '<a class="title" href="https://jira.example.com/browse/PROJ-1" target="_blank"',
+    )
+    expect(out).toContain('<a class="file" href="tickets/PROJ-1.md">PROJ-1.md</a>')
+  })
+
+  it('TC-I-BOARD-15b keeps an unpushed ticket\'s title pointed at its file', () => {
+    expect(html([ticket('LOCAL-0001')])).toContain(
+      '<a class="title" href="tickets/LOCAL-0001.md">',
+    )
+  })
+
+  it('TC-I-BOARD-16 marks a file board as unable to move anything', () => {
+    const out = html([linked])
+
+    expect(out).toContain('data-live="0"')
+    expect(out).toContain('data-nonce=""')
+    expect(out).toContain('mgmt board --serve --apply')
+  })
+
+  it('TC-I-BOARD-17 marks a served applying board as draggable', () => {
+    const out = renderBoardHtml(buildBoard([linked], { me: null, generated: AT }), {
+      project: 'PROJ',
+      live: { nonce: 'a-nonce', apply: true },
+    })
+
+    expect(out).toContain('data-live="1"')
+    expect(out).toContain('data-nonce="a-nonce"')
+    expect(out).toContain('drag to move')
+    expect(out).toContain('draggable="true"')
+    expect(out).toContain('data-status="To Do"')
+  })
+
+  it('TC-I-BOARD-18 leaves a served board read-only without --apply', () => {
+    const out = renderBoardHtml(buildBoard([linked], { me: null, generated: AT }), {
+      project: 'PROJ',
+      live: { nonce: 'a-nonce', apply: false },
+    })
+
+    expect(out).toContain('data-live="0"')
+    expect(out).toContain('restart with --apply')
+  })
+})
+
 describe('identity', () => {
   let root: string
   let asked: number

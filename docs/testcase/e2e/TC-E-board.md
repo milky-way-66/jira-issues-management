@@ -53,3 +53,23 @@ diff to every sync; the identity file names one person and must not be shared.*
 **When** `mgmt board` runs twice
 **Then** the personal board is the token owner's both times
 **And** the tracker was asked exactly once.
+
+## Moving a ticket
+
+**TC-E-BOARD-11** — `mgmt move` is a dry run by default
+**When** `mgmt move PROJ-1 Done` runs
+**Then** it prints what it would do, and the tracker records no write.
+
+**TC-E-BOARD-12** — `--apply` transitions the ticket and updates the file
+**Then** the tracker reports the new status and the ticket file agrees.
+
+*The base snapshot is part of the same write; TC-U-MOVE-09 and TC-U-MOVE-10 pin it
+precisely, including that nothing but `status` is touched in it.*
+
+**TC-E-BOARD-13** — a status the workflow does not offer is refused usefully
+**When** a ticket is moved to a status with no transition to it
+**Then** the command fails naming the statuses that *are* available.
+
+**TC-E-BOARD-14** — `--serve --apply` without a token fails before serving
+**Then** the command exits non-zero saying no drag could reach the tracker, rather
+than starting a server whose every drag would fail.

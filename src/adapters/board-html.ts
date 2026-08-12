@@ -48,6 +48,12 @@ function renderCard(card: BoardCard): string {
     ? `<a class="key" href="${escapeHtml(card.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(card.id)}</a>`
     : `<span class="key local">${escapeHtml(card.id)}</span>`
 
+  // The title goes to the tracker, because that is where you act on a ticket.
+  // The file is one click away rather than zero — `.md` at the end of the card.
+  const title = card.url
+    ? `<a class="title" href="${escapeHtml(card.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(card.title)}</a>`
+    : `<a class="title" href="${escapeHtml(card.path)}">${escapeHtml(card.title)}</a>`
+
   const assignee = card.assignee
     ? `<span class="who" style="--h:${hue(card.assignee)}" title="${escapeHtml(card.assignee)}">${escapeHtml(initials(card.assignee))}</span>`
     : '<span class="who none" title="Unassigned">··</span>'
@@ -64,10 +70,11 @@ function renderCard(card: BoardCard): string {
     .join(' ')
     .toLowerCase()
 
-  return `<article class="card${card.conflict ? ' conflict' : ''}" data-find="${escapeHtml(haystack)}">
+  return `<article class="card${card.conflict ? ' conflict' : ''}" draggable="true" data-id="${escapeHtml(card.id)}" data-status="${escapeHtml(card.status)}" data-find="${escapeHtml(haystack)}">
         <div class="row">${link}<span class="type t-${escapeHtml(card.type.toLowerCase().replace(/[^a-z]+/g, '-'))}">${escapeHtml(card.type)}</span>${assignee}</div>
-        <a class="title" href="${escapeHtml(card.path)}">${escapeHtml(card.title)}</a>
+        ${title}
         ${meta ? `<div class="meta">${meta}</div>` : ''}
+        <div class="row foot"><a class="file" href="${escapeHtml(card.path)}">${escapeHtml(card.id)}.md</a></div>
         ${card.conflict ? '<div class="warn">conflict — run <code>mgmt resolve</code></div>' : ''}
       </article>`
 }
@@ -79,9 +86,11 @@ function renderView(view: BoardView, empty: string): string {
 
   const columns = view.columns
     .map(
-      (col) => `<section class="col">
+      (col) => `<section class="col" data-status="${escapeHtml(col.status)}">
       <h2>${escapeHtml(col.status)}<span class="count">${col.cards.length}</span></h2>
+      <div class="drop">
       ${col.cards.map(renderCard).join('\n      ')}
+      </div>
     </section>`,
     )
     .join('\n    ')
@@ -157,6 +166,22 @@ input[type="search"] {
 .tag { font-size: 11px; color: var(--dim); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
 .tag.parent { color: var(--accent); }
 .warn { font-size: 11px; color: var(--warn); }
+.foot { margin-top: 2px; }
+.file { font: 11px ui-monospace, Menlo, monospace; color: var(--dim); text-decoration: none; }
+.file:hover { text-decoration: underline; }
+.drop { display: flex; flex-direction: column; gap: 10px; min-height: 44px; border-radius: 8px; }
+.col.over .drop { outline: 2px dashed var(--accent); outline-offset: 3px; }
+.card.moving { opacity: .45; }
+.card.busy { pointer-events: none; opacity: .6; }
+#toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 6px; padding: 9px 14px; max-width: 70ch; box-shadow: 0 6px 24px #0003;
+}
+#toast[hidden] { display: none; }
+#toast.bad { border-left-color: var(--warn); color: var(--warn); }
+.mode { font-size: 12px; color: var(--dim); }
+.mode.live { color: var(--accent); }
 .empty { color: var(--dim); padding: 40px 0; }
 code { font: 11px ui-monospace, Menlo, monospace; }
 `
@@ -166,6 +191,8 @@ code { font: 11px ui-monospace, Menlo, monospace; }
 // years" a safe claim.
 const SCRIPT = `
 const boards = [...document.querySelectorAll('.board')];
+const live = document.body.dataset.live === '1';
+const nonce = document.body.dataset.nonce || '';
 const tabs = [...document.querySelectorAll('.tabs button')];
 function show(key) {
   boards.forEach(b => { b.hidden = b.id !== key; });
@@ -186,9 +213,118 @@ search.addEventListener('input', () => {
     col.querySelector('.count').textContent = shown;
   });
 });
+
+// ── drag to move ───────────────────────────────────────────────────────────
+// The card moves in the DOM only after the tracker confirms it. An optimistic
+// move that silently reverted would leave the board disagreeing with Jira, and
+// this board's whole claim is that it never shows something untrue.
+
+const toast = document.getElementById('toast');
+let hideAt = null;
+function say(message, bad) {
+  toast.textContent = message;
+  toast.classList.toggle('bad', !!bad);
+  toast.hidden = false;
+  clearTimeout(hideAt);
+  hideAt = setTimeout(() => { toast.hidden = true; }, bad ? 9000 : 3500);
+}
+
+let dragged = null;
+
+document.querySelectorAll('.card').forEach(card => {
+  card.addEventListener('dragstart', e => {
+    dragged = card;
+    card.classList.add('moving');
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox will not start a drag without data on the transfer.
+    e.dataTransfer.setData('text/plain', card.dataset.id);
+  });
+  card.addEventListener('dragend', () => {
+    card.classList.remove('moving');
+    document.querySelectorAll('.col.over').forEach(c => c.classList.remove('over'));
+    dragged = null;
+  });
+});
+
+function recount(col) {
+  col.querySelector('.count').textContent = col.querySelectorAll('.card:not(.hide)').length;
+}
+
+document.querySelectorAll('.col').forEach(col => {
+  col.addEventListener('dragover', e => {
+    if (!dragged) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    col.classList.add('over');
+  });
+  col.addEventListener('dragleave', e => {
+    if (!col.contains(e.relatedTarget)) col.classList.remove('over');
+  });
+  col.addEventListener('drop', async e => {
+    e.preventDefault();
+    col.classList.remove('over');
+    const card = dragged;
+    if (!card) return;
+
+    const to = col.dataset.status;
+    const from = card.dataset.status;
+    if (to === from) return;
+
+    if (!live) {
+      say('This board is a file, so it cannot move anything. Run "mgmt board --serve --apply" to drag tickets into a new status.', true);
+      return;
+    }
+
+    card.classList.add('busy');
+    try {
+      const res = await fetch('/api/move', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-mgmt-nonce': nonce },
+        body: JSON.stringify({ id: card.dataset.id, to }),
+      });
+      const result = await res.json();
+      if (!res.ok) { say(result.error || ('move refused (' + res.status + ')'), true); return; }
+
+      // Land it where the tracker says it landed, which a workflow
+      // post-function can make different from where it was dropped.
+      const target = [...document.querySelectorAll('.col')]
+        .filter(c => c.dataset.status === result.to);
+      const from_col = card.closest('.col');
+
+      document.querySelectorAll('.card[data-id="' + CSS.escape(card.dataset.id) + '"]').forEach(twin => {
+        const source = twin.closest('.col');
+        const board = twin.closest('.board');
+        const dest = target.find(c => c.closest('.board') === board);
+        twin.dataset.status = result.to;
+        if (dest) dest.querySelector('.drop').appendChild(twin);
+        if (source) recount(source);
+        if (dest) recount(dest);
+      });
+
+      say(result.to === to
+        ? card.dataset.id + ' → ' + result.to
+        : card.dataset.id + ' → ' + result.to + ' (the workflow moved it there, not to ' + to + ')');
+      if (from_col) recount(from_col);
+    } catch (err) {
+      say('Could not reach mgmt: ' + err.message + '. Is it still running?', true);
+    } finally {
+      card.classList.remove('busy');
+    }
+  });
+});
 `
 
-export function renderBoardHtml(board: Board, opts: { project: string }): string {
+export interface RenderOptions {
+  project: string
+  /**
+   * Present when the board is being served by `mgmt board --serve`, which is
+   * the only arrangement where a drag can reach the tracker. The nonce
+   * authorises writes for this run; see board-server.ts.
+   */
+  live?: { nonce: string; apply: boolean }
+}
+
+export function renderBoardHtml(board: Board, opts: RenderOptions): string {
   const mineEmpty =
     board.me === null
       ? 'No identity resolved, so no board can be filtered. Set MGMT_ME in .env, or run `mgmt board` with a reachable tracker so it can ask who the token belongs to.'
@@ -196,10 +332,22 @@ export function renderBoardHtml(board: Board, opts: { project: string }): string
 
   const who = board.me ? `My tasks (${escapeHtml(board.me)})` : 'My tasks'
 
+  // Only a served board that was started with --apply may write. A file on disk
+  // is inert by construction, and `--serve` without `--apply` says so in the
+  // header rather than failing at the end of a drag.
+  const writable = Boolean(opts.live?.apply)
+
+  const mode = opts.live
+    ? writable
+      ? '<span class="mode live">drag to move</span>'
+      : '<span class="mode">read-only — restart with --apply to drag</span>'
+    : '<span class="mode">a file, so read-only — mgmt board --serve --apply to drag</span>'
+
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(opts.project)} board</title>
 <style>${STYLE}</style>
+<body data-live="${writable ? '1' : '0'}" data-nonce="${escapeHtml(opts.live?.nonce ?? '')}">
 <header>
   <h1>${escapeHtml(opts.project)}</h1>
   <div class="tabs">
@@ -207,10 +355,12 @@ export function renderBoardHtml(board: Board, opts: { project: string }): string
     <button data-for="mine" aria-selected="false">${who}<span class="count">${board.mine.total}</span></button>
   </div>
   <input type="search" placeholder="Filter by key, title, assignee…" aria-label="Filter cards">
+  ${mode}
   <span class="stamp">generated ${escapeHtml(board.generated)}</span>
 </header>
 ${renderView(board.project, 'No tickets in this workspace yet.')}
 ${renderView(board.mine, mineEmpty)}
+<div id="toast" hidden></div>
 <script>${SCRIPT}</script>
 `
 }

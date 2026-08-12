@@ -48,10 +48,14 @@ async function ticket(
     'priority: null',
     'estimate: null',
     'due: null',
+    'jira:',
+    `  key: "${id}"`,
+    '  url: ""',
+    '  updated: "2026-08-12T00:00:00.000+0000"',
     'sync:',
-    '  base: null',
-    '  lastPull: null',
-    '  lastPush: null',
+    '  base: "2026-08-12T00:00:00.000+0000"',
+    '  last_pull: "2026-08-12T00:00:00.000Z"',
+    '  last_push: null',
     '  conflict: false',
     '---',
     '',
@@ -222,6 +226,51 @@ describe('with a reachable tracker', () => {
       expect(board.me).toBe('alice')
       expect(board.mine.columns.flatMap((c) => c.cards).map((c) => c.id)).toEqual(['PROJ-1'])
     }
+  })
+
+  it('TC-E-BOARD-11 previews a move without writing', async () => {
+    await setUpWorkspace([`JIRA_PAT=${jira.token}`])
+    jira.seed({ summary: 'Title of PROJ-1', status: 'To Do' }, 'PROJ-1')
+    const before = jira.requests.length
+    const out = io()
+
+    expect(await run(['move', 'PROJ-1', 'Done'], out)).toBe(EXIT.ok)
+
+    expect(out.stdout.join('\n')).toContain('would move PROJ-1  To Do → Done')
+    expect(jira.requests.slice(before).filter((r) => r.method !== 'GET')).toHaveLength(0)
+  })
+
+  it('TC-E-BOARD-12 transitions the ticket and brings the file into line', async () => {
+    await setUpWorkspace([`JIRA_PAT=${jira.token}`])
+    jira.seed({ summary: 'Title of PROJ-1', status: 'To Do' }, 'PROJ-1')
+    const out = io()
+
+    expect(await run(['move', 'PROJ-1', 'In Progress', '--apply'], out)).toBe(EXIT.ok)
+
+    expect(out.stdout.join('\n')).toContain('PROJ-1  To Do → In Progress')
+    expect(await readFile(join(root, 'tickets', 'PROJ-1.md'), 'utf8')).toContain(
+      'status: "In Progress"',
+    )
+  })
+
+  it('TC-E-BOARD-13 refuses a status the workflow does not offer', async () => {
+    await setUpWorkspace([`JIRA_PAT=${jira.token}`])
+    jira.seed({ summary: 'Title of PROJ-1', status: 'To Do' }, 'PROJ-1')
+    const out = io()
+
+    expect(await run(['move', 'PROJ-1', 'Shipped', '--apply'], out)).toBe(EXIT.error)
+
+    // The tracker's own message names what the workflow does allow.
+    expect(out.stderr.join('\n')).toMatch(/no transition to "Shipped"/)
+    expect(out.stderr.join('\n')).toMatch(/Available:/)
+  })
+
+  it('TC-E-BOARD-14 refuses to serve an applying board with no token', async () => {
+    await setUpWorkspace([])
+    const out = io()
+
+    expect(await run(['board', '--serve', '--apply'], out)).toBe(EXIT.error)
+    expect(out.stderr.join('\n')).toContain('JIRA_PAT')
   })
 
   it('TC-E-BOARD-10b lets MGMT_ME in .env override the tracker', async () => {

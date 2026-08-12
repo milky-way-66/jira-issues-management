@@ -46,6 +46,29 @@ opened from the workspace root reaches the Markdown behind a card.
 **TC-I-BOARD-08** — an unresolved identity explains how to fix it
 **Then** the message names `MGMT_ME`.
 
+**TC-I-BOARD-15** — the card title opens the ticket in the tracker
+**Given** a ticket with a tracker URL
+**Then** the title links there, and the file is still reachable from the `<id>.md`
+link at the foot of the card
+**And** a ticket with no tracker URL keeps its title pointed at the file.
+
+*Rationale: the tracker is where you act on a ticket. The file is one click away
+rather than zero.*
+
+**TC-I-BOARD-16** — a board written to a file cannot move anything
+**Then** it is marked not-live, carries no nonce, and says in the header that
+dragging needs `mgmt board --serve --apply`.
+
+*Rationale: a `file://` page has no way to reach Jira, and the only way to give it
+one would be to write a token into the workspace.*
+
+**TC-I-BOARD-17** — a served, applying board is draggable
+**Then** it is marked live, carries the nonce it was given, and every card is
+draggable with the status of the column it sits in.
+
+**TC-I-BOARD-18** — a served board without `--apply` is not live
+**Then** it carries no live flag, and the header says to restart with `--apply`.
+
 ## Identity
 
 **TC-I-BOARD-09** — `MGMT_ME` wins over everything

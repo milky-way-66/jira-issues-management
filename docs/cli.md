@@ -17,6 +17,11 @@ mgmt resolve <id> --take local | --take jira | --done
 mgmt index                 # regenerate INDEX.md
 mgmt board                 # generate board.html — two Kanban views
 mgmt board --me bob --columns "To Do,In Progress,Done"
+mgmt board --serve         # serve it on loopback, read-only
+mgmt board --serve --apply # ...and let a drag move a ticket
+
+mgmt move PROJ-1 "In Progress"           # DRY RUN
+mgmt move PROJ-1 "In Progress" --apply   # transition it
 mgmt status                # pending pushes, conflicts, cursor positions
 mgmt doctor                # tokens, server version, custom field ids, permissions
 
@@ -94,6 +99,36 @@ and the project board is complete. Not knowing who you are costs one view, not t
 
 Both `board.html` and `.sync/identity.json` are gitignored: the board is regenerated from
 the tickets, and the identity file names one person.
+
+### Dragging a card
+
+A board written to a file cannot move anything. A `file://` page has no way to reach
+Jira, and the only way to give it one would be to write your token into a file in the
+workspace — not a trade worth making for a drag gesture. So the token stays in the
+process and the page talks to it instead:
+
+```sh
+mgmt board --serve --apply
+```
+
+Dragging a card to another column transitions the ticket in Jira, then updates the local
+file and the merge base, so the next `mgmt sync` has nothing to reconcile. The card moves
+on screen only *after* the tracker confirms — and it lands in the column the tracker
+reports, which a workflow post-function can make different from where you dropped it.
+
+Three rules hold while serving:
+
+- **Loopback only.** The socket binds `127.0.0.1`; nothing off the machine can reach it.
+- **A nonce on every write**, embedded in the served page. Any program on this machine
+  can reach a loopback port and any tab can POST to one, but neither can read the page to
+  learn the nonce.
+- **Read-only without `--apply`.** Serving is not consenting to writes.
+
+If the workflow has no transition to where you dropped it, Jira's own refusal is shown —
+including which transitions *are* available.
+
+`mgmt move <id> <status>` does the same thing from the terminal, and like everything else
+that writes, it is a dry run until `--apply`.
 
 ## Workspace discovery
 
