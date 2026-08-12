@@ -1,6 +1,6 @@
 {
   "name": "jira-issues-management",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Manage Jira tickets and external GitHub issues as Markdown files in git, with a safe two-way sync",
   "type": "module",
   "license": "MIT",
@@ -41,5 +41,10 @@
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   }
 }

@@ -8,6 +8,8 @@
  */
 
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { builtinModules, createRequire } from 'node:module'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -350,6 +352,61 @@ describe('TC-E-SAFE — repository hygiene', () => {
     const help = await exec('node', [join(packageRoot, 'dist/main.js'), '--help'])
     expect(help.stdout).toContain('sync')
   }, 60_000)
+
+  it('TC-E-SAFE-15d every runtime import is a declared dependency', async () => {
+    // How 0.1.0 shipped broken: commander, yaml and zod are left external by
+    // tsup — correct, bundling CommonJS into ESM is what TC-E-SAFE-15c catches —
+    // but they were declared nowhere. `npm i -g` installed no dependencies and
+    // the binary died on its first import.
+    //
+    // Every check in this file passed, because a working copy has node_modules.
+    // That is precisely why this one reads the *manifest* rather than the disk.
+    await exec('npm', ['run', 'build'], { cwd: packageRoot })
+
+    const bundle = await readFile(join(packageRoot, 'dist/main.js'), 'utf8')
+    const manifest = JSON.parse(
+      await readFile(join(packageRoot, 'package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string> }
+    const declared = new Set(Object.keys(manifest.dependencies ?? {}))
+
+    const imported = new Set<string>()
+    for (const match of bundle.matchAll(/(?:^|\n)\s*(?:import|export)[^;'"]*from\s*["']([^"']+)["']/g)) {
+      const spec = match[1] ?? ''
+      if (spec.startsWith('.') || spec.startsWith('/')) continue
+      // Builtins need no declaration, with or without the `node:` prefix — the
+      // bundler emits both forms.
+      if (spec.startsWith('node:') || builtinModules.includes(spec)) continue
+      // Scoped packages keep two segments; the rest keep one.
+      imported.add(spec.split('/').slice(0, spec.startsWith('@') ? 2 : 1).join('/'))
+    }
+
+    expect(imported.size, 'no bare imports found — the regex stopped matching').toBeGreaterThan(0)
+
+    const undeclared = [...imported].filter((name) => !declared.has(name))
+    expect(
+      undeclared,
+      `dist/main.js imports ${undeclared.join(', ')}, which package.json does not declare. ` +
+        `A global install of this package will crash on startup.`,
+    ).toEqual([])
+  }, 60_000)
+
+  it('TC-E-SAFE-15e no runtime dependency resolves from outside the repository', () => {
+    // The second half of the same failure: yaml and zod resolved from a stray
+    // node_modules in a *parent* directory, left by an npm install run in the
+    // wrong place. The suite was green against packages this repository had
+    // never declared, and a clean clone would not have run at all.
+    const manifest = JSON.parse(
+      readFileSync(join(packageRoot, 'package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string> }
+
+    for (const name of Object.keys(manifest.dependencies ?? {})) {
+      const resolved = createRequire(join(packageRoot, 'package.json')).resolve(name)
+      expect(
+        resolved.startsWith(join(packageRoot, 'node_modules')),
+        `${name} resolves from ${resolved}, outside the repository`,
+      ).toBe(true)
+    }
+  })
 
   it('TC-E-SAFE-15b templates ship with the package, or init cannot work', async () => {
     // A global install with no templates/ fails at `mgmt init`, which is the

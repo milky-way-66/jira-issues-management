@@ -122,3 +122,20 @@ baffling.*
 **When** a publish dry-run is inspected
 **Then** it contains `dist/`, `templates/` and the readme, and no `.env`, key material,
 or test fixture.
+
+**TC-E-SAFE-15d** — every runtime import is a declared dependency
+**When** the built bundle's bare imports are compared against `package.json`
+**Then** every one of them is listed under `dependencies`.
+
+*This is how 0.1.0 shipped broken. The bundler leaves those packages external —
+correctly, since bundling CommonJS into ESM is what TC-E-SAFE-15c catches — but
+nothing declared them, so `npm i -g` installed no dependencies and the binary died
+on its first import. Every other case passed, because a working copy has
+`node_modules`. This one reads the manifest instead of the disk.*
+
+**TC-E-SAFE-15e** — no runtime dependency resolves from outside the repository
+**Then** each declared dependency resolves inside this repository's `node_modules`.
+
+*The other half of the same failure: two packages were resolving from a stray
+`node_modules` in a parent directory. The suite was green against packages the
+repository had never declared, and a clean clone would not have run at all.*
